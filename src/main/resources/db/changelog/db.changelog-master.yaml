@@ -1,0 +1,57 @@
+databaseChangeLog:
+  - changeSet:
+      id: 001-addon-enablement
+      author: addonservice
+      changes:
+        - createTable:
+            tableName: addon_enablement
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: addon_name
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: agency_id
+                  type: BIGINT
+              - column:
+                  name: enabled
+                  type: BOOLEAN
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+        - createIndex:
+            tableName: addon_enablement
+            indexName: idx_addon_enablement_lookup
+            columns:
+              - column:
+                  name: addon_name
+              - column:
+                  name: tenant_id
+              - column:
+                  name: agency_id
+        - createIndex:
+            tableName: addon_enablement
+            indexName: idx_addon_enablement_tenant
+            columns:
+              - column:
+                  name: tenant_id

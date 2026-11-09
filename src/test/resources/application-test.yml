@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:addons;MODE=MariaDB;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: http://localhost:1/certs
+
+addons:
+  discovery:
+    initial-delay-ms: 3600000
+    interval-ms: 3600000

@@ -1,0 +1,32 @@
+# Every value can be set through environment variables (relaxed binding), for example
+# SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI, SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI,
+# ADDONS_DISCOVERY_KUBERNETES, ADDONS_DISCOVERY_STATICADDONS, ADDONS_TOKEN_PRIVATEKEYPEM, ADDONS_USERSERVICE_BASEURL.
+server:
+  port: 8090
+  shutdown: graceful
+
+spring:
+  application:
+    name: addonservice
+  datasource:
+    url: jdbc:mariadb://mariadb:3306/addonservice
+    username: addonservice
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  liquibase:
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+addons:
+  public-path: /service/addons
