@@ -73,6 +73,13 @@ Slots and who sees them:
 | `ADDONS_TOKEN_PRIVATEKEYPEM` | generated per start | PKCS#8 RSA key; set it, or tokens break on restart and differ between replicas |
 | `ADDONS_USERSERVICE_BASEURL` | `http://userservice:8080` | |
 
+## Demo add-on
+
+`examples/demo-addon` is a complete add-on without dependencies: manifest, a UI bundle that
+uses the host's React from `globalThis.__ORISO_ADDON_SHARED__`, and `/api/hello`, which
+verifies the AddonService token against the JWKS and echoes its claims. It offers one app in
+`asker.navigation`, `consultant.navigation` and `consultant.asker-profile`.
+
 ## Development
 
 ```sh
