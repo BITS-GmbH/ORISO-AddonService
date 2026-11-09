@@ -46,9 +46,22 @@ public class GatewayController {
       HttpServletResponse response)
       throws IOException {
     Caller caller = Caller.from(jwt);
-    var granted = access.require(name, caller, request.getHeader(AddonAccess.AGENCY_HEADER));
+    var granted =
+        access.require(
+            name,
+            caller,
+            request.getHeader(AddonAccess.AGENCY_HEADER),
+            request.getHeader(AddonAccess.SESSION_HEADER));
+    var session = granted.session();
+    String token =
+        tokens.issue(
+            name,
+            caller,
+            granted.agencyId(),
+            session == null ? null : session.sessionId(),
+            session == null ? null : session.askerId());
     Map<String, String> headers = new LinkedHashMap<>();
-    headers.put("Authorization", "Bearer " + tokens.issue(name, caller, granted.agencyId()));
+    headers.put("Authorization", "Bearer " + token);
     proxy.forward(granted.addon(), "/api", remainder(request, name, "api"), request, response, headers);
   }
 

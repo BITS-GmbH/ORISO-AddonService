@@ -55,3 +55,53 @@ databaseChangeLog:
             columns:
               - column:
                   name: tenant_id
+  - changeSet:
+      id: 002-addon-setting
+      author: addonservice
+      changes:
+        - createTable:
+            tableName: addon_setting
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: addon_name
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: agency_id
+                  type: BIGINT
+              - column:
+                  name: values_json
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+        - createIndex:
+            tableName: addon_setting
+            indexName: idx_addon_setting_lookup
+            columns:
+              - column:
+                  name: addon_name
+              - column:
+                  name: tenant_id
+              - column:
+                  name: agency_id

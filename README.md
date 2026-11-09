@@ -15,6 +15,9 @@ discovered by the platform and enabled per Träger. Design: ADR-031 (draft,
 | `GET /admin/addons?tenantId=` | admins of the Träger | Registered add-ons with their switches |
 | `PUT /admin/addons/{name}/tenants/{tenantId}` | SuperAdmin | Switch an add-on on or off for a Träger |
 | `PUT`/`DELETE /admin/addons/{name}/tenants/{tenantId}/agencies/{agencyId}` | admins of the Träger | Override for one agency |
+| `GET`/`PUT /admin/addons/{name}/settings?tenantId=&agencyId=` | admins of the Träger | Settings schema and stored values; PUT validates against the schema |
+| `GET /admin/addons/{name}/stats?tenantId=` | admins of the Träger | The add-on's statistics with their labels |
+| `GET /host/settings` | add-on backends | Effective settings (defaults, Träger, agency) for the add-on, Träger and agency of the add-on token |
 
 ingress-nginx rewrites `/service/addons/...` to `/addons/...`, like the other services.
 
@@ -25,9 +28,22 @@ Träger, agencies can be switched off (or on again). An agency switch alone has 
 UserService (`/users/data`, with the caller's token) that the caller belongs to that agency,
 applies the agency override and passes `agencyId` in the add-on token.
 
+**Session context:** when a counsellor's request carries `X-Oriso-Session-Id`, the AddonService
+asks UserService (`/users/consultants/sessions/{id}`, with the counsellor's token) whether the
+counsellor may see the session, and passes `sessionId` and the client's `askerId` in the add-on
+token. Without access the request gets 403. Clients' session headers are ignored.
+
 **Token for add-ons** (RS256, audience = add-on name, 2 minutes): `sub`, `username`, `roles`,
-`tenantId`, `agencyId` (if any). Cookies, the Keycloak token and client addresses are never
-forwarded.
+`tenantId`, `agencyId`, `sessionId` and `askerId` (if any). Cookies, the Keycloak token and
+client addresses are never forwarded. Add-on backends send this token to `/host/**`.
+
+**What an add-on serves besides its manifest and `/api`, `/ui`:**
+- `settings` (manifest): path of a JSON Schema for its settings. Supported: an object with
+  `string` (`enum`, `maxLength`), `boolean`, `integer`/`number` (`minimum`, `maximum`)
+  properties, `default`, `required`, `title`, `description`.
+- `GET /stats?tenantId=`: called by the AddonService with a service token (role
+  `addon-service`, `tenantId`), answers `{"values": {"<stat id>": <number>}}` for the stats
+  declared in the manifest.
 
 ## Discovery
 

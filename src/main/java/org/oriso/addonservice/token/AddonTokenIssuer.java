@@ -23,7 +23,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import org.springframework.stereotype.Component;
 
@@ -48,15 +51,16 @@ public class AddonTokenIssuer {
     this.encoder = new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(key)));
   }
 
+  /** Role of the AddonService itself, in tokens for calls without a user (statistics). */
+  public static final String SERVICE_ROLE = "addon-service";
+
   public String issue(String addon, Caller caller, Long agencyId) {
-    Instant now = clock.instant();
+    return issue(addon, caller, agencyId, null, null);
+  }
+
+  public String issue(String addon, Caller caller, Long agencyId, Long sessionId, String askerId) {
     var claims =
-        JwtClaimsSet.builder()
-            .issuer(properties.issuer())
-            .audience(List.of(addon))
-            .subject(caller.userId())
-            .issuedAt(now)
-            .expiresAt(now.plus(properties.ttl()))
+        baseClaims(addon, caller.userId())
             .claim("roles", List.copyOf(caller.roles()))
             .claim("tenantId", caller.tenantId());
     if (caller.username() != null) {
@@ -65,6 +69,41 @@ public class AddonTokenIssuer {
     if (agencyId != null) {
       claims.claim("agencyId", agencyId);
     }
+    if (sessionId != null) {
+      claims.claim("sessionId", sessionId);
+    }
+    if (askerId != null) {
+      claims.claim("askerId", askerId);
+    }
+    return sign(claims);
+  }
+
+  /** Token for the AddonService's own calls to an add-on, scoped to one Träger. */
+  public String issueForService(String addon, long tenantId) {
+    return sign(baseClaims(addon, "addonservice").claim("roles", List.of(SERVICE_ROLE)).claim("tenantId", tenantId));
+  }
+
+  public JwtDecoder decoder() {
+    try {
+      var decoder = NimbusJwtDecoder.withPublicKey(key.toRSAPublicKey()).build();
+      decoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(properties.issuer()));
+      return decoder;
+    } catch (JOSEException e) {
+      throw new IllegalStateException(e);
+    }
+  }
+
+  private JwtClaimsSet.Builder baseClaims(String addon, String subject) {
+    Instant now = clock.instant();
+    return JwtClaimsSet.builder()
+        .issuer(properties.issuer())
+        .audience(List.of(addon))
+        .subject(subject)
+        .issuedAt(now)
+        .expiresAt(now.plus(properties.ttl()));
+  }
+
+  private String sign(JwtClaimsSet.Builder claims) {
     var header = JwsHeader.with(SignatureAlgorithm.RS256).keyId(key.getKeyID()).type("JWT").build();
     return encoder.encode(JwtEncoderParameters.from(header, claims.build())).getTokenValue();
   }

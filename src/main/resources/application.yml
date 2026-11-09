@@ -14,7 +14,8 @@ spring:
   jpa:
     open-in-view: false
     hibernate:
-      ddl-auto: validate
+      # Liquibase owns the schema.
+      ddl-auto: none
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
 
