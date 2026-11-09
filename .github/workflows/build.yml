@@ -1,0 +1,49 @@
+name: test, build and push image to harbor
+
+on:
+  push:
+    branches:
+      - main
+      - "feat/**"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: [generic, on-prem]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - run: ./mvnw -B verify
+
+  build-and-push:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: [generic, on-prem]
+    steps:
+      - name: Login to Harbor
+        run: echo "${{ secrets.HARBOR_SECRET }}" | docker login https://harbor.mybits.dev -u '${{ secrets.HARBOR_USER }}' --password-stdin
+
+      - uses: actions/checkout@v6
+
+      - name: Set image tag
+        id: vars
+        run: echo "tag=0.1.0-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: harbor.mybits.dev/digisucht/addonservice:${{ steps.vars.outputs.tag }}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: examples/demo-addon
+          push: true
+          tags: harbor.mybits.dev/digisucht/addon-demo:${{ steps.vars.outputs.tag }}
