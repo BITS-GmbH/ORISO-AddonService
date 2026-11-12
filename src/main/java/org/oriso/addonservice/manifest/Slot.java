@@ -1,6 +1,7 @@
 package org.oriso.addonservice.manifest;
 
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Optional;
 import java.util.Set;
 import org.oriso.addonservice.security.Caller;
@@ -33,7 +34,11 @@ public enum Slot {
   }
 
   public boolean isVisibleTo(Caller caller) {
-    return audience.stream().anyMatch(caller::hasRole);
+    return isVisibleTo(caller.roles());
+  }
+
+  public boolean isVisibleTo(Collection<String> roles) {
+    return audience.stream().anyMatch(roles::contains);
   }
 
   public static Optional<Slot> fromId(String id) {

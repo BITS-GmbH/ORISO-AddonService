@@ -105,3 +105,87 @@ databaseChangeLog:
                   name: tenant_id
               - column:
                   name: agency_id
+  - changeSet:
+      id: 003-addon-audit-entry
+      author: addonservice
+      changes:
+        - createTable:
+            tableName: addon_audit_entry
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: addon_name
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: app_id
+                  type: VARCHAR(64)
+              - column:
+                  name: action
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: summary_json
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actor_id
+                  type: VARCHAR(64)
+              - column:
+                  name: actor_username
+                  type: VARCHAR(255)
+              - column:
+                  name: actor_roles_json
+                  type: TEXT
+              - column:
+                  name: tenant_id
+                  type: BIGINT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: agency_id
+                  type: BIGINT
+              - column:
+                  name: session_id
+                  type: BIGINT
+              - column:
+                  name: subject_id
+                  type: VARCHAR(64)
+        - createIndex:
+            tableName: addon_audit_entry
+            indexName: idx_addon_audit_entry_tenant
+            columns:
+              - column:
+                  name: tenant_id
+              - column:
+                  name: created_at
+        - createIndex:
+            tableName: addon_audit_entry
+            indexName: idx_addon_audit_entry_agency
+            columns:
+              - column:
+                  name: agency_id
+              - column:
+                  name: created_at
+        - createIndex:
+            tableName: addon_audit_entry
+            indexName: idx_addon_audit_entry_addon
+            columns:
+              - column:
+                  name: addon_name
+              - column:
+                  name: created_at

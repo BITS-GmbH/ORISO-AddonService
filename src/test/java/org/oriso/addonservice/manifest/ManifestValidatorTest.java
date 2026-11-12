@@ -9,7 +9,12 @@ import org.junit.jupiter.api.Test;
 class ManifestValidatorTest {
 
   private static AddonManifest manifest(String name, String contract, String ui, List<AddonManifest.App> apps) {
-    return new AddonManifest(name, "1.0.0", contract, "^19", apps, ui, null, null, null, null, "/health");
+    return withCalendar(name, contract, ui, apps, null);
+  }
+
+  private static AddonManifest withCalendar(
+      String name, String contract, String ui, List<AddonManifest.App> apps, String calendar) {
+    return new AddonManifest(name, "1.0.0", contract, "^19", apps, ui, null, null, null, null, "/health", calendar);
   }
 
   private static AddonManifest.App app(String id, String... slots) {
@@ -47,5 +52,24 @@ class ManifestValidatorTest {
     assertThat(ManifestValidator.problems(manifest("demo", "oriso-addon/v1", "/ui/e.js", List.of(app("a"), app("a", "admin.page")))))
         .anyMatch(p -> p.contains("declares no slot"))
         .anyMatch(p -> p.contains("used twice"));
+  }
+
+  @Test
+  void acceptsAnOptionalCalendarPath() {
+    var apps = List.of(app("goals", "asker.navigation"));
+    assertThat(ManifestValidator.problems(withCalendar("demo", "oriso-addon/v1", "/ui/e.js", apps, "/calendar"))).isEmpty();
+    assertThat(ManifestValidator.problems(withCalendar("demo", "oriso-addon/v1", "/ui/e.js", apps, "/api/v1/calendar"))).isEmpty();
+    for (String invalid : List.of("calendar", "/../calendar", "/calendar?x=1", "http://evil/calendar", "")) {
+      assertThat(ManifestValidator.problems(withCalendar("demo", "oriso-addon/v1", "/ui/e.js", apps, invalid)))
+          .as(invalid)
+          .anyMatch(p -> p.startsWith("calendar"));
+    }
+  }
+
+  @Test
+  void reservesTheNamesOfTheHostApiAndCalendar() {
+    var apps = List.of(app("goals", "asker.navigation"));
+    assertThat(ManifestValidator.problems(manifest("host", "oriso-addon/v1", "/ui/e.js", apps))).anyMatch(p -> p.contains("reserved"));
+    assertThat(ManifestValidator.problems(manifest("calendar", "oriso-addon/v1", "/ui/e.js", apps))).anyMatch(p -> p.contains("reserved"));
   }
 }

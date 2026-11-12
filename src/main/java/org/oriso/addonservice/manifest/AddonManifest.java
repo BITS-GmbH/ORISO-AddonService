@@ -17,7 +17,8 @@ public record AddonManifest(
     List<Stat> stats,
     String export,
     List<String> events,
-    String health) {
+    String health,
+    String calendar) {
 
   public static final String CONTRACT_V1 = "oriso-addon/v1";
 

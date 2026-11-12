@@ -17,7 +17,11 @@ discovered by the platform and enabled per Träger. Design: ADR-031 (draft,
 | `PUT`/`DELETE /admin/addons/{name}/tenants/{tenantId}/agencies/{agencyId}` | admins of the Träger | Override for one agency |
 | `GET`/`PUT /admin/addons/{name}/settings?tenantId=&agencyId=` | admins of the Träger | Settings schema and stored values; PUT validates against the schema |
 | `GET /admin/addons/{name}/stats?tenantId=` | admins of the Träger | The add-on's statistics with their labels |
+| `GET /admin/audit?tenantId=&addon=&from=&to=&page=&size=` | admins | Audit entries of add-ons, newest first (see below) |
+| `GET /calendar?from=&to=` | logged-in users | Calendar entries of the caller's add-ons (see below) |
 | `GET /host/settings` | add-on backends | Effective settings (defaults, Träger, agency) for the add-on, Träger and agency of the add-on token |
+| `POST /host/notifications` | add-on backends | Notification to the token's user or the session's client, delivered by UserService |
+| `POST /host/audit` | add-on backends | Append-only audit entry |
 
 ingress-nginx rewrites `/service/addons/...` to `/addons/...`, like the other services.
 
@@ -44,6 +48,50 @@ client addresses are never forwarded. Add-on backends send this token to `/host/
 - `GET /stats?tenantId=`: called by the AddonService with a service token (role
   `addon-service`, `tenantId`), answers `{"values": {"<stat id>": <number>}}` for the stats
   declared in the manifest.
+- `calendar` (manifest): path such as `/calendar`, see below.
+
+The full contract for notifications, audit entries and calendar entries is in
+[docs/contract-v1-notifications-audit-calendar.md](docs/contract-v1-notifications-audit-calendar.md).
+
+## Host API
+
+Add-on backends call these with the add-on token of the request they are handling.
+
+**`POST /host/notifications`**: `recipient` is `self` (the token's `sub`) or `asker` (the
+token's `askerId`; 403 without one). `title` (max 120) and `text` (max 500) are plain text per
+locale with `de` required. `appId` must be an app of the add-on (404 otherwise) and
+`target.slot` one of that app's slots that the recipient can open (`asker` means role `user`);
+`consultant.session` and `consultant.asker-profile` need a `sessionId` in the token, which is
+passed on. The AddonService forwards to UserService `POST /users/event-notifications/addon`
+with a Keycloak client-credentials token of the backend-technical client (cached until 30 s
+before it expires) and answers `202 {"id": ...}` with UserService's id, or 502 if UserService
+or Keycloak fails.
+
+**`POST /host/audit`**: `action` matches `[a-z0-9._-]{1,64}`, `summary` is plain text per locale
+(`de` required, max 300), `subject` is `self`, `asker` (403 without `askerId` in the token) or
+omitted, `appId` is optional (404 if unknown). The AddonService adds time, add-on, actor (id,
+username, roles), Träger, agency, session and subject id from the token and stores the entry in
+`addon_audit_entry`, which is never updated or deleted. Answers `201 {"id": ...}`.
+
+## Audit log for admins
+
+`GET /admin/audit` answers `{"items": [...], "page", "size", "total"}`, newest first; `size`
+is 1 to 200 (default 50), `from` (inclusive) and `to` (exclusive) are ISO instants.
+- SuperAdmin (`tenant-admin` of Träger 0): every Träger, or the one in `tenantId`.
+- `tenant-admin` / `single-tenant-admin`: their own Träger only (another `tenantId` is 403).
+- `agency-admin` / `restricted-agency-admin`: only entries written in their agencies, as
+  UserService (`/users/data`) reports them.
+
+## Calendar
+
+`GET /calendar?from=&to=` (`from` before `to`, at most 92 days) asks every add-on that declares
+`calendar`, is enabled for the caller's Träger (and agency, via `X-Oriso-Agency-Id`) and has an
+app the caller's role can see, in parallel with a token for the caller (no session), 3 s each:
+`GET <calendar>?from=&to=`. The add-on answers `{"entries": [...]}` with entries of the token's
+user. The AddonService keeps the first 200 per add-on, drops entries that are invalid (unknown
+app, kind other than `appointment`/`deadline`/`reminder`, `title.de` missing, bad `start`/`end`,
+`link.slot` not a slot of that app the caller can see) or outside the range, adds `addon` and
+answers `{"entries": [...], "errors": ["<add-on that failed or timed out>"]}` sorted by `start`.
 
 ## Discovery
 
@@ -64,6 +112,7 @@ Each add-on serves `/.well-known/oriso-addon.json`. Invalid manifests are logged
   "contract": "oriso-addon/v1",
   "react": "^19",
   "ui": "/ui/entry.js",
+  "calendar": "/calendar",
   "apps": [
     { "id": "goals", "title": { "de": "Ausgangssituation und Ziele" },
       "slots": ["asker.navigation", "consultant.session", "consultant.asker-profile"] }
@@ -88,6 +137,10 @@ Slots and who sees them:
 | `SPRING_DATASOURCE_URL` / `_USERNAME` / `_PASSWORD` | `jdbc:mariadb://mariadb:3306/addonservice` | Schema created by Liquibase |
 | `ADDONS_TOKEN_PRIVATEKEYPEM` | generated per start | PKCS#8 RSA key; set it, or tokens break on restart and differ between replicas |
 | `ADDONS_USERSERVICE_BASEURL` | `http://userservice:8080` | |
+| `ADDONS_TECHNICALCLIENT_TOKENURL` | | Keycloak token endpoint, internal URL, e.g. `http://keycloak:8080/auth/realms/<realm>/protocol/openid-connect/token`; needed for notifications |
+| `ADDONS_TECHNICALCLIENT_CLIENTID` | `backend-technical` | Confidential client with the realm role `technical` |
+| `ADDONS_TECHNICALCLIENT_CLIENTSECRET` | | Its secret |
+| `ADDONS_CALENDAR_TIMEOUT` | `3s` | Per add-on |
 
 ## Demo add-on
 

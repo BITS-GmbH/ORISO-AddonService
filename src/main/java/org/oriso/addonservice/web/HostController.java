@@ -1,13 +1,19 @@
 package org.oriso.addonservice.web;
 
-import java.util.List;
 import java.util.Map;
+import org.oriso.addonservice.audit.AuditService;
+import org.oriso.addonservice.host.HostToken;
+import org.oriso.addonservice.host.NotificationService;
 import org.oriso.addonservice.registry.AddonRegistry;
+import org.oriso.addonservice.registry.RegisteredAddon;
 import org.oriso.addonservice.settings.SettingsService;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -20,30 +26,44 @@ public class HostController {
 
   private final AddonRegistry registry;
   private final SettingsService settings;
+  private final NotificationService notifications;
+  private final AuditService audit;
 
-  public HostController(AddonRegistry registry, SettingsService settings) {
+  public HostController(
+      AddonRegistry registry, SettingsService settings, NotificationService notifications, AuditService audit) {
     this.registry = registry;
     this.settings = settings;
+    this.notifications = notifications;
+    this.audit = audit;
   }
 
   @GetMapping("/addons/host/settings")
-  public Map<String, Object> settings(@AuthenticationPrincipal Jwt token) {
-    List<String> audience = token.getAudience();
-    if (audience == null || audience.size() != 1) {
-      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Token is not for one add-on");
-    }
-    var addon =
-        registry
-            .find(audience.getFirst())
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown add-on"));
-    Long tenantId = number(token.getClaim("tenantId"));
-    if (tenantId == null) {
-      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No Träger in token");
-    }
-    return settings.effective(addon, tenantId, number(token.getClaim("agencyId")));
+  public Map<String, Object> settings(@AuthenticationPrincipal Jwt jwt) {
+    HostToken token = HostToken.from(jwt);
+    return settings.effective(addonOf(token), token.requireTenant(), token.agencyId());
   }
 
-  private static Long number(Object claim) {
-    return claim instanceof Number number ? number.longValue() : null;
+  @PostMapping("/addons/host/notifications")
+  public ResponseEntity<Created> notify(
+      @AuthenticationPrincipal Jwt jwt, @RequestBody NotificationService.NotificationRequest request) {
+    HostToken token = HostToken.from(jwt);
+    Object id = notifications.send(addonOf(token), token, request);
+    return ResponseEntity.accepted().body(new Created(id));
   }
+
+  @PostMapping("/addons/host/audit")
+  public ResponseEntity<Created> audit(
+      @AuthenticationPrincipal Jwt jwt, @RequestBody AuditService.AuditRequest request) {
+    HostToken token = HostToken.from(jwt);
+    long id = audit.record(addonOf(token), token, request);
+    return ResponseEntity.status(HttpStatus.CREATED).body(new Created(id));
+  }
+
+  private RegisteredAddon addonOf(HostToken token) {
+    return registry
+        .find(token.addon())
+        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown add-on"));
+  }
+
+  public record Created(Object id) {}
 }

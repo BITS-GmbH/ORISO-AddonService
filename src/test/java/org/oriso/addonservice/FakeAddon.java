@@ -9,18 +9,19 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** A minimal add-on: manifest, one echo API and one UI file. Records the last API request. */
+/** A minimal add-on: manifest, one echo API, one UI file and a calendar. Records the last requests. */
 final class FakeAddon implements AutoCloseable {
 
   static final String MANIFEST =
       """
       {
-        "name": "demo",
+        "name": "%s",
         "version": "0.1.0",
         "contract": "oriso-addon/v1",
         "react": "^19",
         "ui": "/ui/entry.js",
         "settings": "/schema/settings.json",
+        "calendar": "/calendar",
         "stats": [
           { "id": "entries", "label": { "de": "Einträge" }, "type": "count" },
           { "id": "missing", "label": { "de": "Fehlt" }, "type": "count" }
@@ -47,11 +48,21 @@ final class FakeAddon implements AutoCloseable {
 
   final Map<String, String> lastRequest = new ConcurrentHashMap<>();
   final Map<String, String> lastStatsRequest = new ConcurrentHashMap<>();
+  final Map<String, String> lastCalendarRequest = new ConcurrentHashMap<>();
+  volatile int calendarStatus = 200;
+  volatile String calendarBody = "{\"entries\":[]}";
+  volatile long calendarDelayMs = 0;
   private final HttpServer server;
 
   FakeAddon() throws IOException {
+    this("demo");
+  }
+
+  FakeAddon(String name) throws IOException {
     server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-    server.createContext("/.well-known/oriso-addon.json", ex -> reply(ex, 200, "application/json", MANIFEST));
+    String manifest = MANIFEST.formatted(name);
+    server.createContext("/.well-known/oriso-addon.json", ex -> reply(ex, 200, "application/json", manifest));
+    server.createContext("/calendar", this::calendar);
     server.createContext("/schema/settings.json", ex -> reply(ex, 200, "application/json", SCHEMA));
     server.createContext("/stats", this::stats);
     server.createContext("/ui/", ex -> reply(ex, 200, "text/javascript", "export const mount = () => {};"));
@@ -63,6 +74,19 @@ final class FakeAddon implements AutoCloseable {
     lastStatsRequest.put("uri", exchange.getRequestURI().toString());
     lastStatsRequest.put("authorization", exchange.getRequestHeaders().getFirst("Authorization"));
     reply(exchange, 200, "application/json", "{\"values\":{\"entries\":7}}");
+  }
+
+  private void calendar(HttpExchange exchange) throws IOException {
+    lastCalendarRequest.put("uri", exchange.getRequestURI().toString());
+    lastCalendarRequest.put("authorization", exchange.getRequestHeaders().getFirst("Authorization"));
+    if (calendarDelayMs > 0) {
+      try {
+        Thread.sleep(calendarDelayMs);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
+    reply(exchange, calendarStatus, "application/json", calendarBody);
   }
 
   URI baseUrl() {

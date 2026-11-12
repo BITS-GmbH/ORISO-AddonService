@@ -12,7 +12,9 @@ public record AddonProperties(
     @DefaultValue Discovery discovery,
     @DefaultValue Token token,
     @DefaultValue Gateway gateway,
-    @DefaultValue UserService userService) {
+    @DefaultValue UserService userService,
+    @DefaultValue TechnicalClient technicalClient,
+    @DefaultValue Calendar calendar) {
 
   public record Discovery(
       @DefaultValue("false") boolean kubernetes,
@@ -38,9 +40,22 @@ public record AddonProperties(
       @DefaultValue("5s") Duration connectTimeout,
       @DefaultValue("60s") Duration readTimeout) {}
 
-  /** The core UserService, used to check that a counsellor belongs to the agency of a request. */
+  /** The core UserService: agency and session checks, and delivery of add-on notifications. */
   public record UserService(
       @DefaultValue("http://userservice:8080") URI baseUrl,
       @DefaultValue("/users/data") String userDataPath,
-      @DefaultValue("60s") Duration cacheTtl) {}
+      @DefaultValue("60s") Duration cacheTtl,
+      @DefaultValue("/users/event-notifications/addon") String notificationsPath) {}
+
+  /** Keycloak client the AddonService uses for its own calls to UserService (client credentials). */
+  public record TechnicalClient(
+      URI tokenUrl,
+      @DefaultValue("backend-technical") String clientId,
+      String clientSecret,
+      @DefaultValue("30s") Duration renewBeforeExpiry) {}
+
+  public record Calendar(
+      @DefaultValue("3s") Duration timeout,
+      @DefaultValue("200") int maxEntriesPerAddon,
+      @DefaultValue("92d") Duration maxRange) {}
 }

@@ -10,9 +10,10 @@ public final class ManifestValidator {
 
   private static final Pattern NAME = Pattern.compile("^[a-z][a-z0-9-]{1,40}$");
   private static final Pattern APP_ID = Pattern.compile("^[a-z][a-z0-9-]{0,40}$");
+  private static final Pattern PATH = Pattern.compile("^(/[A-Za-z0-9._-]+)+$");
 
   /** Names that would collide with the AddonService's own routes under the public path. */
-  private static final Set<String> RESERVED = Set.of("registry", "admin", "well-known");
+  private static final Set<String> RESERVED = Set.of("registry", "admin", "well-known", "host", "calendar");
 
   private ManifestValidator() {}
 
@@ -31,6 +32,10 @@ public final class ManifestValidator {
     }
     if (manifest.ui() == null || !manifest.ui().startsWith("/ui/")) {
       problems.add("ui must be a path below /ui/");
+    }
+    if (manifest.calendar() != null
+        && (!PATH.matcher(manifest.calendar()).matches() || manifest.calendar().contains(".."))) {
+      problems.add("calendar must be a plain path such as /calendar");
     }
     if (manifest.apps().isEmpty()) {
       problems.add("at least one app is required");
