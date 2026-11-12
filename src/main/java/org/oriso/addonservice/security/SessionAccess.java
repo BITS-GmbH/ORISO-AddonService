@@ -8,11 +8,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.oriso.addonservice.config.AddonProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Checks that a counsellor may see a session, by asking UserService with the counsellor's own
@@ -62,13 +64,14 @@ public class SessionAccess {
           : Optional.empty();
     } catch (RestClientResponseException e) {
       HttpStatusCode status = e.getStatusCode();
-      if (status.value() != 403 && status.value() != 404) {
-        log.warn("UserService answered {} for session {}", status.value(), sessionId);
+      if (status.value() == 403 || status.value() == 404) {
+        return Optional.empty();
       }
-      return Optional.empty();
+      log.warn("UserService answered {} for session {}", status.value(), sessionId);
+      throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Session check failed");
     } catch (RestClientException e) {
       log.warn("Could not check session {} with UserService: {}", sessionId, e.getMessage());
-      return Optional.empty();
+      throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Session check failed");
     }
   }
 
