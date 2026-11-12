@@ -97,3 +97,40 @@ Manifest gets an optional top-level `"calendar": "/calendar"`.
 - `from` must be before `to`, the range at most 92 days. The AddonService drops invalid entries (unknown `appId`, other `kind`, missing `title.de`, unparsable `start`/`end`, `end` before `start`, `link.slot` not a slot of that app visible to the caller) and entries outside the range, and keeps the first 200 per add-on.
 - AddonService response: `{ "entries": [ ...entries with "addon": "<name>" added ], "errors": [ "<addon name>" ] }`, sorted by `start`.
 - The web app shows them in its existing appointment/calendar views next to core appointments, visibly marked as coming from an add-on, clicking opens the link target as for notifications. Read only: no booking, moving or cancelling from the core.
+
+## 4. Visibility: registry in context, dynamic apps
+
+What a user sees is decided in three stages, all in the AddonService (ADR-032 section 2): enablement, slot and role, app state.
+
+### Registry in context
+
+`GET /addons/registry` (user token) accepts the same optional headers as the gateway:
+
+- `X-Oriso-Agency-Id`: verified membership (as in the gateway); the Träger switch and the override of this agency decide.
+- `X-Oriso-Session-Id`: counsellors only; verified with UserService as in the gateway; the session's agency decides, and the session context goes into the token used for the visibility call.
+- No header: the caller's own agencies (counsellor: their agencies; client: the agencies of their sessions, from `/users/data`). An add-on is listed if it is enabled for at least one of them; if the caller has no agency at all, the Träger switch alone decides.
+
+The web app fetches the registry once without context (navigation, profile-independent places) and once per open case with that case's agency and session (case view, profile tiles). A disabled add-on is therefore absent from the response and the UI renders nothing for it.
+
+### Dynamic app visibility
+
+Manifest, per app: optional `"visibility": "static" | "dynamic"`, default `static`.
+
+For every listed add-on with at least one dynamic app the caller's role can see, the AddonService calls
+
+`GET <add-on>/visibility` (user-scoped add-on token, with agency, session and askerId claims when the registry request had that context)
+
+Add-on response:
+
+```json
+{ "apps": { "goals": { "visible": true, "badge": 1 } } }
+```
+
+- `visible` is required per dynamic app; apps missing from the answer are hidden.
+- `badge`: optional non-negative integer, 0 or absent means none; max 99 is shown as "99+".
+- Timeout 2 s (`addons.visibility.timeout`); on timeout or error every dynamic app of that add-on is hidden for this request, and the add-on name is logged.
+- Cached per user, add-on and context for `addons.visibility.cache-ttl` (default 30 s). The cache entry of a recipient is dropped when the AddonService forwards a notification for them, so a released tool shows up immediately after the notification.
+
+Registry response per app gains `"badge": <int>` when the add-on reported one. Static apps never carry a badge.
+
+The web app shows the badge on the navigation entry, the profile tile and the case-view button, and refetches the registry when an `ADDON_NOTIFICATION` arrives and when the window regains focus.
