@@ -13,6 +13,7 @@ import org.oriso.addonservice.manifest.Slot;
 import org.oriso.addonservice.registry.RegisteredAddon;
 import org.oriso.addonservice.security.Role;
 import org.oriso.addonservice.token.TechnicalClientToken;
+import org.oriso.addonservice.visibility.VisibilityService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -42,8 +43,10 @@ public class NotificationService {
   private final RestClient userService;
   private final String notificationsPath;
   private final TechnicalClientToken technicalToken;
+  private final VisibilityService visibility;
 
-  public NotificationService(AddonProperties properties, TechnicalClientToken technicalToken) {
+  public NotificationService(
+      AddonProperties properties, TechnicalClientToken technicalToken, VisibilityService visibility) {
     var requestFactory =
         new JdkClientHttpRequestFactory(HttpClient.newBuilder().connectTimeout(TIMEOUT).build());
     requestFactory.setReadTimeout(TIMEOUT);
@@ -54,6 +57,7 @@ public class NotificationService {
             .build();
     this.notificationsPath = properties.userService().notificationsPath();
     this.technicalToken = technicalToken;
+    this.visibility = visibility;
   }
 
   /** Validates the notification, sends it to UserService and returns UserService's id. */
@@ -103,6 +107,7 @@ public class NotificationService {
     payload.put("important", Boolean.TRUE.equals(request.important()));
     payload.put("title", request.title());
     payload.put("text", request.text());
+    visibility.evict(recipientId, addon.name());
     return deliver(addon.name(), payload);
   }
 

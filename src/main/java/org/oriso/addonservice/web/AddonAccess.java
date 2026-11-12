@@ -1,5 +1,6 @@
 package org.oriso.addonservice.web;
 
+import java.util.Set;
 import org.oriso.addonservice.enablement.EnablementService;
 import org.oriso.addonservice.registry.AddonRegistry;
 import org.oriso.addonservice.registry.RegisteredAddon;
@@ -68,11 +69,36 @@ public class AddonAccess {
       return null;
     }
     long sessionId = parse(sessionHeader, SESSION_HEADER);
-    String askerId =
+    SessionAccess.SessionInfo session =
         sessions
-            .askerOf(caller, sessionId)
+            .find(caller, sessionId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "No access to this session"));
-    return new SessionContext(sessionId, askerId);
+    return new SessionContext(sessionId, session.askerId(), session.agencyId());
+  }
+
+  /**
+   * The agencies that decide what the registry lists: the session's agency for a counsellor's
+   * session header, else the verified agency header, else all of the caller's own agencies.
+   */
+  public RegistryContext registryContext(Caller caller, String agencyHeader, String sessionHeader) {
+    SessionContext session = sessionContext(caller, sessionHeader);
+    if (session != null && session.agencyId() != null) {
+      return new RegistryContext(Set.of(session.agencyId()), session.agencyId(), session);
+    }
+    Long agencyId = agencyContext(caller, agencyHeader);
+    if (agencyId != null) {
+      return new RegistryContext(Set.of(agencyId), agencyId, session);
+    }
+    return new RegistryContext(membership.requireAgenciesOf(caller), null, session);
+  }
+
+  /** Listed if enabled for at least one agency; without any agency the Träger switch decides. */
+  public boolean isEnabled(String addon, Caller caller, RegistryContext context) {
+    if (context.agencies().isEmpty()) {
+      return enablement.isEnabled(addon, caller.tenantId(), null);
+    }
+    return context.agencies().stream()
+        .anyMatch(agencyId -> enablement.isEnabled(addon, caller.tenantId(), agencyId));
   }
 
   private static long parse(String value, String header) {
@@ -83,7 +109,10 @@ public class AddonAccess {
     }
   }
 
-  public record SessionContext(long sessionId, String askerId) {}
+  public record SessionContext(long sessionId, String askerId, Long agencyId) {}
+
+  /** {@code agencyId} is the single agency of the request, null when it lists the caller's own. */
+  public record RegistryContext(Set<Long> agencies, Long agencyId, SessionContext session) {}
 
   public record Granted(RegisteredAddon addon, Long agencyId, SessionContext session) {}
 }

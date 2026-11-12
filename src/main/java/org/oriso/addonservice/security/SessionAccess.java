@@ -18,7 +18,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Checks that a counsellor may see a session, by asking UserService with the counsellor's own
- * token, and returns the client of that session. UserService answers 403 for foreign sessions.
+ * token, and returns the client and agency of that session. UserService answers 403 for foreign
+ * sessions.
  */
 @Component
 public class SessionAccess {
@@ -36,21 +37,21 @@ public class SessionAccess {
     this.clock = clock;
   }
 
-  /** The client (asker) of the session, or empty when the caller may not see it. */
-  public Optional<String> askerOf(Caller caller, long sessionId) {
+  /** The session's client (asker) and agency, or empty when the caller may not see it. */
+  public Optional<SessionInfo> find(Caller caller, long sessionId) {
     Instant now = clock.instant();
     cache.values().removeIf(entry -> entry.expiresAt.isBefore(now));
     String key = caller.accessToken() + "#" + sessionId;
     Cached cached = cache.get(key);
     if (cached != null) {
-      return cached.askerId;
+      return cached.session;
     }
-    Optional<String> askerId = fetch(caller, sessionId);
-    cache.put(key, new Cached(askerId, now.plus(properties.cacheTtl())));
-    return askerId;
+    Optional<SessionInfo> session = fetch(caller, sessionId);
+    cache.put(key, new Cached(session, now.plus(properties.cacheTtl())));
+    return session;
   }
 
-  private Optional<String> fetch(Caller caller, long sessionId) {
+  private Optional<SessionInfo> fetch(Caller caller, long sessionId) {
     try {
       Map<?, ?> session =
           userService
@@ -59,9 +60,11 @@ public class SessionAccess {
               .header("Authorization", "Bearer " + caller.accessToken())
               .retrieve()
               .body(Map.class);
-      return session != null && session.get("askerId") instanceof String askerId
-          ? Optional.of(askerId)
-          : Optional.empty();
+      if (session == null || !(session.get("askerId") instanceof String askerId)) {
+        return Optional.empty();
+      }
+      Long agencyId = session.get("agencyId") instanceof Number number ? number.longValue() : null;
+      return Optional.of(new SessionInfo(askerId, agencyId));
     } catch (RestClientResponseException e) {
       HttpStatusCode status = e.getStatusCode();
       if (status.value() == 403 || status.value() == 404) {
@@ -75,5 +78,7 @@ public class SessionAccess {
     }
   }
 
-  private record Cached(Optional<String> askerId, Instant expiresAt) {}
+  public record SessionInfo(String askerId, Long agencyId) {}
+
+  private record Cached(Optional<SessionInfo> session, Instant expiresAt) {}
 }

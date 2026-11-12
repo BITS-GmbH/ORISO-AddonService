@@ -8,7 +8,7 @@ discovered by the platform and enabled per Träger. Design: ADR-031 (draft,
 
 | Route (behind `/service/addons`) | Who | What |
 |---|---|---|
-| `GET /registry` | logged-in users | Add-ons enabled for the caller's Träger (and agency, via `X-Oriso-Agency-Id`), with only the apps whose slots the caller's role may see |
+| `GET /registry` | logged-in users | Add-ons enabled in the request's context (see below), with only the apps whose slots the caller's role may see and the dynamic apps the add-on reports as visible |
 | `/{name}/api/**` | logged-in users | Forwarded to the add-on's `/api/**` with a short-lived token signed by the AddonService instead of the Keycloak token |
 | `GET /{name}/ui/**` | anyone | The add-on's bundle and assets (loaded with `import()`, which cannot send a token) |
 | `GET /.well-known/jwks.json` | anyone | Public key add-ons use to verify the token |
@@ -30,7 +30,9 @@ Träger, agencies can be switched off (or on again). An agency switch alone has 
 
 **Agency context:** when the web app sends `X-Oriso-Agency-Id`, the AddonService checks with
 UserService (`/users/data`, with the caller's token) that the caller belongs to that agency,
-applies the agency override and passes `agencyId` in the add-on token.
+applies the agency override and passes `agencyId` in the add-on token. A counsellor's agencies
+are `agencies[].id` of `/users/data`; a client's are `sessions[].agencyId` and
+`consultingTypes.*.agency.id` (UserService 2.0.15 sends no `agencies` list for clients).
 
 **Session context:** when a counsellor's request carries `X-Oriso-Session-Id`, the AddonService
 asks UserService (`/users/consultants/sessions/{id}`, with the counsellor's token) whether the
@@ -49,9 +51,32 @@ client addresses are never forwarded. Add-on backends send this token to `/host/
   `addon-service`, `tenantId`), answers `{"values": {"<stat id>": <number>}}` for the stats
   declared in the manifest.
 - `calendar` (manifest): path such as `/calendar`, see below.
+- `GET /visibility`: needed when an app declares `"visibility": "dynamic"`, see Registry.
 
 The full contract for notifications, audit entries and calendar entries is in
 [docs/contract-v1-notifications-audit-calendar.md](docs/contract-v1-notifications-audit-calendar.md).
+
+## Registry
+
+`GET /registry` takes the same optional headers as the gateway and decides in three stages:
+
+1. **Enablement.** With `X-Oriso-Session-Id` (counsellors only, verified with UserService) the
+   session's agency decides and the agency header is not used; with `X-Oriso-Agency-Id` (verified
+   membership) that agency decides; without either, the caller's own agencies decide and an
+   add-on is listed if it is enabled for at least one of them. A caller without any agency
+   (UserService reports none) sees what the Träger switch allows. If UserService cannot be asked
+   for the caller's agencies, the answer is 502.
+2. **Slot and role.** Only apps with a slot the caller's role can open, and only those slots.
+3. **App state.** For every listed add-on with a `"visibility": "dynamic"` app the caller can
+   see, the AddonService calls `GET <add-on>/visibility` in parallel with an add-on token for
+   the caller (with `agencyId`, `sessionId` and `askerId` when the request had that context).
+   The add-on answers `{"apps": {"goals": {"visible": true, "badge": 1}}}`. Dynamic apps
+   missing from the answer or with `visible` other than `true` are hidden; on an error or after
+   `addons.visibility.timeout` all dynamic apps of that add-on are hidden and its name is logged.
+   A positive integer `badge` is passed on as `badge` of the app; static apps never have one.
+   Answers are cached per user, add-on and context for `addons.visibility.cache-ttl`; failures
+   are not cached. Forwarding a notification drops the cached answers of that add-on for the
+   recipient, so a released tool appears on the next registry request.
 
 ## Host API
 
@@ -115,10 +140,14 @@ Each add-on serves `/.well-known/oriso-addon.json`. Invalid manifests are logged
   "calendar": "/calendar",
   "apps": [
     { "id": "goals", "title": { "de": "Ausgangssituation und Ziele" },
-      "slots": ["asker.navigation", "consultant.session", "consultant.asker-profile"] }
+      "slots": ["asker.navigation", "consultant.session", "consultant.asker-profile"],
+      "visibility": "dynamic" }
   ]
 }
 ```
+
+`visibility` is `static` (default: the app is shown wherever its slot and the enablement allow)
+or `dynamic` (the add-on decides per user, see Registry).
 
 Slots and who sees them:
 
@@ -141,6 +170,8 @@ Slots and who sees them:
 | `ADDONS_TECHNICALCLIENT_CLIENTID` | `backend-technical` | Confidential client with the realm role `technical` |
 | `ADDONS_TECHNICALCLIENT_CLIENTSECRET` | | Its secret |
 | `ADDONS_CALENDAR_TIMEOUT` | `3s` | Per add-on |
+| `ADDONS_VISIBILITY_TIMEOUT` | `2s` | `GET /visibility`, per add-on |
+| `ADDONS_VISIBILITY_CACHETTL` | `30s` | Cache of `GET /visibility` answers per user, add-on and context |
 
 ## Demo add-on
 

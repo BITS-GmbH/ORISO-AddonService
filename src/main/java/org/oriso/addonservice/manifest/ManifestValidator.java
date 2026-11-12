@@ -47,6 +47,11 @@ public final class ManifestValidator {
       } else if (!appIds.add(app.id())) {
         problems.add("app id '" + app.id() + "' is used twice");
       }
+      if (app.visibility() != null
+          && !AddonManifest.App.STATIC.equals(app.visibility())
+          && !AddonManifest.App.DYNAMIC.equals(app.visibility())) {
+        problems.add("app '" + app.id() + "' visibility must be 'static' or 'dynamic'");
+      }
       if (app.slots().isEmpty()) {
         problems.add("app '" + app.id() + "' declares no slot");
       }

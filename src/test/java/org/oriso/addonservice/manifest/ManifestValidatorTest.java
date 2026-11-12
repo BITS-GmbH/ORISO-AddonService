@@ -18,7 +18,22 @@ class ManifestValidatorTest {
   }
 
   private static AddonManifest.App app(String id, String... slots) {
-    return new AddonManifest.App(id, Map.of("de", "Titel"), List.of(slots));
+    return withVisibility(id, null, slots);
+  }
+
+  private static AddonManifest.App withVisibility(String id, String visibility, String... slots) {
+    return new AddonManifest.App(id, Map.of("de", "Titel"), List.of(slots), visibility);
+  }
+
+  @Test
+  void acceptsStaticOrDynamicVisibilityOnly() {
+    var apps =
+        List.of(
+            withVisibility("a", "static", "asker.navigation"),
+            withVisibility("b", "dynamic", "asker.navigation"),
+            withVisibility("c", "sometimes", "asker.navigation"));
+    assertThat(ManifestValidator.problems(manifest("demo", "oriso-addon/v1", "/ui/e.js", apps)))
+        .containsExactly("app 'c' visibility must be 'static' or 'dynamic'");
   }
 
   @Test

@@ -94,7 +94,7 @@ class SessionSettingsStatsIntegrationTest {
 
   @Test
   void passesAVerifiedSessionAndItsClientToTheAddon() throws Exception {
-    when(sessions.askerOf(any(), eq(42L))).thenReturn(Optional.of("asker-7"));
+    when(sessions.find(any(), eq(42L))).thenReturn(Optional.of(new SessionAccess.SessionInfo("asker-7", 10L)));
     mvc.perform(get("/addons/demo/api/entries").with(user(1, "consultant")).header("X-Oriso-Session-Id", "42"))
         .andExpect(status().isCreated());
     Jwt token = decode(ADDON.lastRequest.get("header:authorization"));
@@ -104,7 +104,7 @@ class SessionSettingsStatsIntegrationTest {
 
   @Test
   void refusesSessionsTheCounsellorMayNotSee() throws Exception {
-    when(sessions.askerOf(any(), anyLong())).thenReturn(Optional.empty());
+    when(sessions.find(any(), anyLong())).thenReturn(Optional.empty());
     mvc.perform(get("/addons/demo/api/entries").with(user(1, "consultant")).header("X-Oriso-Session-Id", "43"))
         .andExpect(status().isForbidden());
   }
@@ -113,7 +113,7 @@ class SessionSettingsStatsIntegrationTest {
   void ignoresTheSessionHeaderOfClients() throws Exception {
     mvc.perform(get("/addons/demo/api/entries").with(user(1, "user")).header("X-Oriso-Session-Id", "42"))
         .andExpect(status().isCreated());
-    verify(sessions, never()).askerOf(any(), anyLong());
+    verify(sessions, never()).find(any(), anyLong());
     assertThat(decode(ADDON.lastRequest.get("header:authorization")).hasClaim("askerId")).isFalse();
   }
 

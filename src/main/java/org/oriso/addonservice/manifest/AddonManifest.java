@@ -35,10 +35,17 @@ public record AddonManifest(
   }
 
   @JsonIgnoreProperties(ignoreUnknown = true)
-  public record App(String id, Map<String, String> title, List<String> slots) {
+  public record App(String id, Map<String, String> title, List<String> slots, String visibility) {
+
+    public static final String STATIC = "static";
+    public static final String DYNAMIC = "dynamic";
 
     public List<String> slots() {
       return slots == null ? List.of() : slots;
+    }
+
+    public boolean isDynamic() {
+      return DYNAMIC.equals(visibility);
     }
   }
 

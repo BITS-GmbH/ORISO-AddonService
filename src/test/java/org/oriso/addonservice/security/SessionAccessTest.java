@@ -52,6 +52,7 @@ class SessionAccessTest {
             new AddonProperties.UserService(
                 baseUrl, "/users/data", Duration.ofSeconds(60), "/users/event-notifications/addon"),
             null,
+            null,
             null);
     sessions = new SessionAccess(properties, Clock.systemUTC());
   }
@@ -62,11 +63,11 @@ class SessionAccessTest {
   }
 
   @Test
-  void returnsTheClientOfAnAccessibleSession() {
+  void returnsTheClientAndAgencyOfAnAccessibleSession() {
     status = 200;
-    body = "{\"askerId\":\"asker-7\"}";
+    body = "{\"askerId\":\"asker-7\",\"agencyId\":10}";
 
-    assertThat(sessions.askerOf(counsellor, 16)).contains("asker-7");
+    assertThat(sessions.find(counsellor, 16)).contains(new SessionAccess.SessionInfo("asker-7", 10L));
   }
 
   @Test
@@ -74,8 +75,8 @@ class SessionAccessTest {
     status = 403;
     body = "{}";
 
-    assertThat(sessions.askerOf(counsellor, 16)).isEmpty();
-    assertThat(sessions.askerOf(counsellor, 16)).isEmpty();
+    assertThat(sessions.find(counsellor, 16)).isEmpty();
+    assertThat(sessions.find(counsellor, 16)).isEmpty();
     assertThat(calls).hasValue(1);
   }
 
@@ -84,14 +85,14 @@ class SessionAccessTest {
     status = 500;
     body = "{}";
 
-    assertThatThrownBy(() -> sessions.askerOf(counsellor, 16))
+    assertThatThrownBy(() -> sessions.find(counsellor, 16))
         .isInstanceOf(ResponseStatusException.class)
         .extracting(e -> ((ResponseStatusException) e).getStatusCode())
         .isEqualTo(HttpStatus.BAD_GATEWAY);
 
     status = 200;
     body = "{\"askerId\":\"asker-7\"}";
-    assertThat(sessions.askerOf(counsellor, 16)).contains("asker-7");
+    assertThat(sessions.find(counsellor, 16)).map(SessionAccess.SessionInfo::askerId).contains("asker-7");
     assertThat(calls).hasValue(2);
   }
 }

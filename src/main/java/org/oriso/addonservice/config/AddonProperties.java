@@ -14,7 +14,8 @@ public record AddonProperties(
     @DefaultValue Gateway gateway,
     @DefaultValue UserService userService,
     @DefaultValue TechnicalClient technicalClient,
-    @DefaultValue Calendar calendar) {
+    @DefaultValue Calendar calendar,
+    @DefaultValue Visibility visibility) {
 
   public record Discovery(
       @DefaultValue("false") boolean kubernetes,
@@ -58,4 +59,8 @@ public record AddonProperties(
       @DefaultValue("3s") Duration timeout,
       @DefaultValue("200") int maxEntriesPerAddon,
       @DefaultValue("92d") Duration maxRange) {}
+
+  public record Visibility(
+      @DefaultValue("2s") Duration timeout,
+      @DefaultValue("30s") Duration cacheTtl) {}
 }
