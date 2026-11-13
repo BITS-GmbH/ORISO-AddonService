@@ -1,7 +1,10 @@
 package org.oriso.addonservice.web;
 
+import java.util.List;
 import java.util.Map;
 import org.oriso.addonservice.audit.AuditService;
+import org.oriso.addonservice.host.ContextService;
+import org.oriso.addonservice.host.GateService;
 import org.oriso.addonservice.host.HostToken;
 import org.oriso.addonservice.host.NotificationService;
 import org.oriso.addonservice.registry.AddonRegistry;
@@ -14,6 +17,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -28,13 +32,39 @@ public class HostController {
   private final SettingsService settings;
   private final NotificationService notifications;
   private final AuditService audit;
+  private final GateService gates;
+  private final ContextService context;
 
   public HostController(
-      AddonRegistry registry, SettingsService settings, NotificationService notifications, AuditService audit) {
+      AddonRegistry registry,
+      SettingsService settings,
+      NotificationService notifications,
+      AuditService audit,
+      GateService gates,
+      ContextService context) {
     this.registry = registry;
     this.settings = settings;
     this.notifications = notifications;
     this.audit = audit;
+    this.gates = gates;
+    this.context = context;
+  }
+
+  /** Core gates for the Träger of the token, e.g. whether its DPA allows new counselling. */
+  @GetMapping("/addons/host/gates")
+  public Map<String, Object> gates(@AuthenticationPrincipal Jwt jwt) {
+    HostToken token = HostToken.from(jwt);
+    addonOf(token);
+    return gates.gates(token.requireTenant());
+  }
+
+  /** Sessions, agencies and counsellors of the token's user or client, within its Träger (and agency). */
+  @GetMapping("/addons/host/context")
+  public Map<String, Object> context(
+      @AuthenticationPrincipal Jwt jwt, @RequestParam(required = false) String subject) {
+    HostToken token = HostToken.from(jwt);
+    addonOf(token);
+    return context.context(token, subject);
   }
 
   @GetMapping("/addons/host/settings")
@@ -44,11 +74,12 @@ public class HostController {
   }
 
   @PostMapping("/addons/host/notifications")
-  public ResponseEntity<Created> notify(
+  public ResponseEntity<Object> notify(
       @AuthenticationPrincipal Jwt jwt, @RequestBody NotificationService.NotificationRequest request) {
     HostToken token = HostToken.from(jwt);
-    Object id = notifications.send(addonOf(token), token, request);
-    return ResponseEntity.accepted().body(new Created(id));
+    Object result = notifications.send(addonOf(token), token, request);
+    return ResponseEntity.accepted()
+        .body(result instanceof List<?> ids ? Map.of("ids", ids) : new Created(result));
   }
 
   @PostMapping("/addons/host/audit")

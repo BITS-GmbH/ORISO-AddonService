@@ -21,6 +21,10 @@ spring:
     change-log: classpath:db/changelog/db.changelog-master.yaml
 
 management:
+  health:
+    rabbit:
+      # Only meaningful when lifecycle events are on; without a broker it would report DOWN.
+      enabled: ${addons.lifecycle.enabled:false}
   endpoints:
     web:
       exposure:

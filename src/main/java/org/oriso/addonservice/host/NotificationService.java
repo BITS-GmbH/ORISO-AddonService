@@ -34,6 +34,7 @@ public class NotificationService {
 
   public static final String SELF = "self";
   public static final String ASKER = "asker";
+  public static final String COUNSELLORS = "counsellors";
 
   private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
   private static final Duration TIMEOUT = Duration.ofSeconds(10);
@@ -44,9 +45,13 @@ public class NotificationService {
   private final String notificationsPath;
   private final TechnicalClientToken technicalToken;
   private final VisibilityService visibility;
+  private final ContextService context;
 
   public NotificationService(
-      AddonProperties properties, TechnicalClientToken technicalToken, VisibilityService visibility) {
+      AddonProperties properties,
+      TechnicalClientToken technicalToken,
+      VisibilityService visibility,
+      ContextService context) {
     var requestFactory =
         new JdkClientHttpRequestFactory(HttpClient.newBuilder().connectTimeout(TIMEOUT).build());
     requestFactory.setReadTimeout(TIMEOUT);
@@ -58,14 +63,20 @@ public class NotificationService {
     this.notificationsPath = properties.userService().notificationsPath();
     this.technicalToken = technicalToken;
     this.visibility = visibility;
+    this.context = context;
   }
 
-  /** Validates the notification, sends it to UserService and returns UserService's id. */
+  /**
+   * Validates the notification, sends it to UserService and returns UserService's id; for
+   * {@code counsellors} one notification per counsellor of the client and the list of ids.
+   */
   public Object send(RegisteredAddon addon, HostToken token, NotificationRequest request) {
     long tenantId = token.requireTenant();
     var problems = new ArrayList<String>();
-    if (!SELF.equals(request.recipient()) && !ASKER.equals(request.recipient())) {
-      problems.add("recipient must be 'self' or 'asker'");
+    if (!SELF.equals(request.recipient())
+        && !ASKER.equals(request.recipient())
+        && !COUNSELLORS.equals(request.recipient())) {
+      problems.add("recipient must be 'self', 'asker' or 'counsellors'");
     }
     problems.addAll(LocalizedText.problems("title", request.title(), 120));
     problems.addAll(LocalizedText.problems("text", request.text(), 500));
@@ -83,6 +94,9 @@ public class NotificationService {
     AddonManifest.App app = requireApp(addon, request.appId());
     if (!app.slots().contains(slot)) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "App '" + app.id() + "' has no slot '" + slot + "'");
+    }
+    if (COUNSELLORS.equals(request.recipient())) {
+      return sendToCounsellors(addon, token, request, app, slot, tenantId);
     }
     String recipientId = recipient(token, request.recipient());
     List<String> recipientRoles = ASKER.equals(request.recipient()) ? List.of(Role.ASKER) : token.roles();
@@ -109,6 +123,41 @@ public class NotificationService {
     payload.put("text", request.text());
     visibility.evict(recipientId, addon.name());
     return deliver(addon.name(), payload);
+  }
+
+  /**
+   * The counsellors of the token's client (a client's own token, or a counsellor's token with a
+   * verified session): within the token's agency and, with a session in the token, that session.
+   */
+  private List<Object> sendToCounsellors(
+      RegisteredAddon addon,
+      HostToken token,
+      NotificationRequest request,
+      AddonManifest.App app,
+      String slot,
+      long tenantId) {
+    if (!Slot.fromId(slot).map(s -> s.isVisibleTo(List.of(Role.CONSULTANT))).orElse(false)) {
+      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Counsellors cannot open slot '" + slot + "'");
+    }
+    var ids = new ArrayList<Object>();
+    for (ContextService.Counsellor counsellor : context.counsellorsOf(token)) {
+      if (counsellor.userId().equals(token.userId())) {
+        continue;
+      }
+      var payload = new LinkedHashMap<String, Object>();
+      payload.put("userId", counsellor.userId());
+      payload.put("tenantId", tenantId);
+      payload.put("addon", addon.name());
+      payload.put("appId", app.id());
+      payload.put("slot", slot);
+      payload.put("sessionId", SESSION_SLOTS.contains(slot) ? counsellor.sessionId() : null);
+      payload.put("important", Boolean.TRUE.equals(request.important()));
+      payload.put("title", request.title());
+      payload.put("text", request.text());
+      visibility.evict(counsellor.userId(), addon.name());
+      ids.add(deliver(addon.name(), payload));
+    }
+    return ids;
   }
 
   public static AddonManifest.App requireApp(RegisteredAddon addon, String appId) {

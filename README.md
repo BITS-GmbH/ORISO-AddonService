@@ -24,6 +24,8 @@ discovered by the platform and enabled per Träger. Design: ADR-031 (draft,
 | `GET /host/settings` | add-on backends | Effective settings (defaults, Träger, agency) for the add-on, Träger and agency of the add-on token |
 | `POST /host/notifications` | add-on backends | Notification to the token's user or the session's client, delivered by UserService |
 | `POST /host/audit` | add-on backends | Append-only audit entry |
+| `GET /host/gates` | add-on backends | Core gates for the token's Träger: today the DPA gate (`status`, `signed`, `newCounsellingAllowed`, `renewalGraceActive`, `signingDeadlineAt`); the add-on decides what a closed gate means for it |
+| `GET /host/context?subject=self\|asker` | add-on backends | Sessions (agency, counsellor, status), agencies and counsellors of the token's user or client, from UserService; within the token's Träger and, with an agency in the token, that agency |
 
 ingress-nginx rewrites `/service/addons/...` to `/addons/...`, like the other services.
 
@@ -93,6 +95,30 @@ passed on. The AddonService forwards to UserService `POST /users/event-notificat
 with a Keycloak client-credentials token of the backend-technical client (cached until 30 s
 before it expires) and answers `202 {"id": ...}` with UserService's id, or 502 if UserService
 or Keycloak fails.
+
+**`recipient: "counsellors"`** (notifications): the counsellors of the token's client (a client's
+own token, or a counsellor's token with a verified session), within the token's agency and, with a
+session in the token, that session; one notification each, without the caller. Answers
+`202 {"ids": [...]}`. Needs a slot counsellors can open.
+
+**`GET /host/gates`** and **`GET /host/context`** read the TenantService
+(`/tenantadmin/{id}/dpa/gate`) and UserService (`/users/addon-context`) with the technical client
+token and cache the answers briefly (`addons.tenant-service.cache-ttl`, `addons.user-service.context-cache-ttl`).
+
+## Lifecycle events
+
+With `ADDONS_LIFECYCLE_ENABLED=true` and `SPRING_RABBITMQ_*` set, the AddonService binds a durable
+queue (`addons.lifecycle.queue`, default `addonservice.lifecycle`) to the core's topic exchange
+`oriso.lifecycle` for `user.deleted` and `session.deleted`. Each event is stored once per add-on
+that lists its type in the manifest's `events` (table `addon_event_delivery`) and delivered as
+`POST <add-on>/events` with a service token (role `addon-service`, the event's `tenantId`). A 2xx
+answer ends it; otherwise it is retried with growing pauses (30 s doubling, at most 6 h) and given up
+with an error log after 7 days. Handlers must be idempotent and accept unknown ids.
+
+```json
+{"id":"…","type":"user.deleted","occurredAt":"…","tenantId":1,"userId":"…","role":"asker"}
+{"id":"…","type":"session.deleted","occurredAt":"…","tenantId":1,"sessionId":16,"askerId":"…","agencyId":0}
+```
 
 **`POST /host/audit`**: `action` matches `[a-z0-9._-]{1,64}`, `summary` is plain text per locale
 (`de` required, max 300), `subject` is `self`, `asker` (403 without `askerId` in the token) or

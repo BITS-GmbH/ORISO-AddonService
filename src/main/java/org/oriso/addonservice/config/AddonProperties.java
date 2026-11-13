@@ -13,9 +13,11 @@ public record AddonProperties(
     @DefaultValue Token token,
     @DefaultValue Gateway gateway,
     @DefaultValue UserService userService,
+    @DefaultValue TenantService tenantService,
     @DefaultValue TechnicalClient technicalClient,
     @DefaultValue Calendar calendar,
-    @DefaultValue Visibility visibility) {
+    @DefaultValue Visibility visibility,
+    @DefaultValue Lifecycle lifecycle) {
 
   public record Discovery(
       @DefaultValue("false") boolean kubernetes,
@@ -46,7 +48,30 @@ public record AddonProperties(
       @DefaultValue("http://userservice:8080") URI baseUrl,
       @DefaultValue("/users/data") String userDataPath,
       @DefaultValue("60s") Duration cacheTtl,
-      @DefaultValue("/users/event-notifications/addon") String notificationsPath) {}
+      @DefaultValue("/users/event-notifications/addon") String notificationsPath,
+      @DefaultValue("/users/addon-context") String contextPath,
+      @DefaultValue("30s") Duration contextCacheTtl) {}
+
+  /** The core TenantService: the DPA gate of a Träger. */
+  public record TenantService(
+      @DefaultValue("http://tenantservice:8081") URI baseUrl,
+      @DefaultValue("/tenantadmin/{tenantId}/dpa/gate") String dpaGatePath,
+      @DefaultValue("60s") Duration cacheTtl) {}
+
+  /**
+   * Lifecycle events of the core (deletions) from RabbitMQ, forwarded to the add-ons that list them
+   * in their manifest. Off unless enabled, so the service runs without a broker.
+   */
+  public record Lifecycle(
+      @DefaultValue("false") boolean enabled,
+      @DefaultValue("oriso.lifecycle") String exchange,
+      @DefaultValue("addonservice.lifecycle") String queue,
+      @DefaultValue("/events") String addonPath,
+      @DefaultValue("10s") Duration timeout,
+      @DefaultValue("30s") Duration retryBase,
+      @DefaultValue("6h") Duration retryMax,
+      @DefaultValue("7d") Duration giveUpAfter,
+      @DefaultValue("50") int batchSize) {}
 
   /** Keycloak client the AddonService uses for its own calls to UserService (client credentials). */
   public record TechnicalClient(

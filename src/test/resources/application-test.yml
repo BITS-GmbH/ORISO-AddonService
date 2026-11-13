@@ -10,6 +10,9 @@ spring:
           jwk-set-uri: http://localhost:1/certs
 
 addons:
+  lifecycle:
+    dispatch-initial-delay-ms: 3600000
+    dispatch-interval-ms: 3600000
   discovery:
     initial-delay-ms: 3600000
     interval-ms: 3600000

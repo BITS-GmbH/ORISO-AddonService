@@ -50,7 +50,14 @@ class SessionAccessTest {
             null,
             null,
             new AddonProperties.UserService(
-                baseUrl, "/users/data", Duration.ofSeconds(60), "/users/event-notifications/addon"),
+                baseUrl,
+                "/users/data",
+                Duration.ofSeconds(60),
+                "/users/event-notifications/addon",
+                "/users/addon-context",
+                Duration.ofSeconds(30)),
+            null,
+            null,
             null,
             null,
             null);

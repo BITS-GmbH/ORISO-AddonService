@@ -22,6 +22,7 @@ final class FakeAddon implements AutoCloseable {
         "ui": "/ui/entry.js",
         "settings": "/schema/settings.json",
         "calendar": "/calendar",
+        "events": ["user.deleted"],
         "stats": [
           { "id": "entries", "label": { "de": "Einträge" }, "type": "count" },
           { "id": "missing", "label": { "de": "Fehlt" }, "type": "count" }
@@ -52,6 +53,8 @@ final class FakeAddon implements AutoCloseable {
   volatile int calendarStatus = 200;
   volatile String calendarBody = "{\"entries\":[]}";
   volatile long calendarDelayMs = 0;
+  final java.util.List<Map<String, String>> events = new java.util.concurrent.CopyOnWriteArrayList<>();
+  volatile int eventStatus = 204;
   private final HttpServer server;
 
   FakeAddon() throws IOException {
@@ -67,6 +70,7 @@ final class FakeAddon implements AutoCloseable {
     server.createContext("/stats", this::stats);
     server.createContext("/ui/", ex -> reply(ex, 200, "text/javascript", "export const mount = () => {};"));
     server.createContext("/api/", this::echo);
+    server.createContext("/events", this::event);
     server.start();
   }
 
@@ -87,6 +91,16 @@ final class FakeAddon implements AutoCloseable {
       }
     }
     reply(exchange, calendarStatus, "application/json", calendarBody);
+  }
+
+  private void event(HttpExchange exchange) throws IOException {
+    events.add(
+        Map.of(
+            "method", exchange.getRequestMethod(),
+            "authorization", String.valueOf(exchange.getRequestHeaders().getFirst("Authorization")),
+            "body", new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
+    exchange.sendResponseHeaders(eventStatus, -1);
+    exchange.close();
   }
 
   URI baseUrl() {

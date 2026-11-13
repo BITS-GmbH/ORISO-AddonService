@@ -222,3 +222,78 @@ databaseChangeLog:
               INSERT INTO addon_global_switch (addon_name, enabled, updated_at, updated_by)
               SELECT DISTINCT addon_name, TRUE, CURRENT_TIMESTAMP, 'migration'
               FROM addon_enablement WHERE enabled = TRUE
+  - changeSet:
+      id: 005-addon-event-delivery
+      author: addonservice
+      changes:
+        - createTable:
+            tableName: addon_event_delivery
+            columns:
+              - column:
+                  name: id
+                  type: BIGINT
+                  autoIncrement: true
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: event_id
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: event_type
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: addon_name
+                  type: VARCHAR(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tenant_id
+                  type: BIGINT
+              - column:
+                  name: payload
+                  type: TEXT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: attempts
+                  type: INT
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: TIMESTAMP(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: next_attempt_at
+                  type: TIMESTAMP(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: delivered_at
+                  type: TIMESTAMP(6)
+              - column:
+                  name: failed_at
+                  type: TIMESTAMP(6)
+              - column:
+                  name: last_error
+                  type: VARCHAR(255)
+        - addUniqueConstraint:
+            tableName: addon_event_delivery
+            constraintName: uq_addon_event_delivery
+            columnNames: event_id, addon_name
+        - createIndex:
+            tableName: addon_event_delivery
+            indexName: idx_addon_event_delivery_due
+            columns:
+              - column:
+                  name: delivered_at
+              - column:
+                  name: failed_at
+              - column:
+                  name: next_attempt_at
