@@ -65,6 +65,7 @@ class GatewayIntegrationTest {
   @BeforeEach
   void setUp() {
     repository.deleteAll();
+    enablement.setGlobal("demo", true, "test");
     discovery.refresh();
   }
 
@@ -227,6 +228,38 @@ class GatewayIntegrationTest {
         .andExpect(status().isForbidden());
     mvc.perform(get("/addons/admin/addons/unknown/tenants").with(user(0, "tenant-admin")))
         .andExpect(status().isNotFound());
+  }
+
+  @Test
+  void theGlobalSwitchIsForSuperAdminsAndTurnsTheAddonOffEverywhere() throws Exception {
+    enablement.setForTenant("demo", 1L, true, "test");
+    String off = "{\"enabled\":false}";
+
+    mvc.perform(put("/addons/admin/addons/demo/global").with(user(1, "tenant-admin"))
+            .contentType(MediaType.APPLICATION_JSON).content(off))
+        .andExpect(status().isForbidden());
+    mvc.perform(put("/addons/admin/addons/unknown/global").with(user(0, "tenant-admin"))
+            .contentType(MediaType.APPLICATION_JSON).content(off))
+        .andExpect(status().isNotFound());
+
+    mvc.perform(put("/addons/admin/addons/demo/global").with(user(0, "tenant-admin"))
+            .contentType(MediaType.APPLICATION_JSON).content(off))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.enabled").value(false))
+        .andExpect(jsonPath("$.updatedBy").value("user-1"));
+
+    mvc.perform(get("/addons/admin/addons").with(user(1, "tenant-admin")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$[0].global.enabled").value(false))
+        .andExpect(jsonPath("$[0].enabled").value(true));
+    mvc.perform(get("/addons/demo/api/echo").with(user(1, "consultant")))
+        .andExpect(status().isForbidden());
+
+    mvc.perform(put("/addons/admin/addons/demo/global").with(user(0, "tenant-admin"))
+            .contentType(MediaType.APPLICATION_JSON).content("{\"enabled\":true}"))
+        .andExpect(status().isOk());
+    mvc.perform(get("/addons/admin/addons").with(user(1, "tenant-admin")))
+        .andExpect(jsonPath("$[0].global.enabled").value(true));
   }
 
   @Test

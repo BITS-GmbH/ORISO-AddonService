@@ -72,6 +72,7 @@ class SessionSettingsStatsIntegrationTest {
   @BeforeEach
   void setUp() {
     enablements.deleteAll();
+    enablement.setGlobal("demo", true, "test");
     settings.deleteAll();
     discovery.refresh();
     enablement.setForTenant("demo", 1L, true, "test");

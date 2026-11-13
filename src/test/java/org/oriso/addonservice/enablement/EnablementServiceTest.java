@@ -14,10 +14,33 @@ class EnablementServiceTest {
 
   @Autowired EnablementService enablement;
   @Autowired AddonEnablementRepository repository;
+  @Autowired AddonGlobalSwitchRepository globalSwitches;
 
   @BeforeEach
   void clean() {
     repository.deleteAll();
+    globalSwitches.deleteAll();
+    enablement.setGlobal("demo", true, "admin");
+  }
+
+  @Test
+  void isOffEverywhereUntilSwitchedOnGlobally() {
+    enablement.setForTenant("other", 1L, true, "admin");
+    enablement.setForAgency("other", 1L, 10L, true, "admin");
+    assertThat(enablement.isGloballyEnabled("other")).isFalse();
+    assertThat(enablement.isEnabled("other", 1L, null)).isFalse();
+    assertThat(enablement.isEnabled("other", 1L, 10L)).isFalse();
+
+    enablement.setGlobal("other", true, "admin");
+    assertThat(enablement.isEnabled("other", 1L, null)).isTrue();
+    assertThat(enablement.isEnabled("other", 1L, 10L)).isTrue();
+
+    enablement.setGlobal("other", false, "root");
+    assertThat(enablement.isEnabled("other", 1L, 10L)).isFalse();
+    assertThat(enablement.globalSwitch("other")).hasValueSatisfying(row -> {
+      assertThat(row.isEnabled()).isFalse();
+      assertThat(row.getUpdatedBy()).isEqualTo("root");
+    });
   }
 
   @Test

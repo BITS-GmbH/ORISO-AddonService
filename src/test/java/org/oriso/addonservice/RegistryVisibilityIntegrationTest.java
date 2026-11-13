@@ -90,6 +90,7 @@ class RegistryVisibilityIntegrationTest {
   @BeforeEach
   void setUp() {
     repository.deleteAll();
+    enablement.setGlobal("tools", true, "test");
     discovery.refresh();
     technicalToken.invalidate();
     enablement.setForTenant("tools", 1L, true, "test");

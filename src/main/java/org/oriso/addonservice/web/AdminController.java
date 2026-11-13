@@ -67,6 +67,19 @@ public class AdminController {
     return byTenant.entrySet().stream().map(entry -> TenantState.of(entry.getKey(), entry.getValue())).toList();
   }
 
+  /** The platform-wide switch; off until a SuperAdmin switches it on, and then above every Träger. */
+  @PutMapping("/{name}/global")
+  public GlobalSwitch setGlobal(
+      @AuthenticationPrincipal Jwt jwt, @PathVariable String name, @RequestBody EnabledRequest request) {
+    Caller caller = Caller.from(jwt);
+    if (!caller.isSuperAdmin()) {
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only platform admins switch an add-on globally");
+    }
+    requireKnown(name);
+    var row = enablement.setGlobal(name, request.enabled(), caller.userId());
+    return new GlobalSwitch(row.isEnabled(), row.getUpdatedAt(), row.getUpdatedBy());
+  }
+
   @PutMapping("/{name}/tenants/{tenantId}")
   public Switch setForTenant(
       @AuthenticationPrincipal Jwt jwt,
@@ -111,7 +124,13 @@ public class AdminController {
         forAddon.stream().filter(s -> s.getAgencyId() == null).anyMatch(AddonEnablement::isEnabled);
     var agencies =
         forAddon.stream().filter(s -> s.getAgencyId() != null).map(Switch::of).toList();
-    return new AdminAddon(addon.manifest(), addon.source(), addon.discoveredAt(), tenant, tenantEnabled, agencies);
+    var global =
+        enablement
+            .globalSwitch(addon.name())
+            .map(row -> new GlobalSwitch(row.isEnabled(), row.getUpdatedAt(), row.getUpdatedBy()))
+            .orElse(new GlobalSwitch(false, null, null));
+    return new AdminAddon(
+        addon.manifest(), addon.source(), addon.discoveredAt(), global, tenant, tenantEnabled, agencies);
   }
 
   private void requireKnown(String name) {
@@ -165,10 +184,15 @@ public class AdminController {
     }
   }
 
+  /** {@code enabled} false and no {@code updatedAt} while nobody has switched it yet. */
+  public record GlobalSwitch(boolean enabled, Instant updatedAt, String updatedBy) {}
+
+  /** {@code enabled} is the Träger switch alone; the add-on runs only while {@code global} is on too. */
   public record AdminAddon(
       AddonManifest manifest,
       String source,
       Instant discoveredAt,
+      GlobalSwitch global,
       long tenantId,
       boolean enabled,
       List<Switch> agencyOverrides) {}

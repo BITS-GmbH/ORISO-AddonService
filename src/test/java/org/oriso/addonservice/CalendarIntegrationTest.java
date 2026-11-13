@@ -67,6 +67,9 @@ class CalendarIntegrationTest {
   @BeforeEach
   void setUp() {
     enablements.deleteAll();
+    enablement.setGlobal("demo", true, "test");
+    enablement.setGlobal("broken", true, "test");
+    enablement.setGlobal("slow", true, "test");
     discovery.refresh();
     List.of(DEMO, BROKEN, SLOW, DISABLED).forEach(addon -> addon.lastCalendarRequest.clear());
     enablement.setForTenant("demo", 1L, true, "test");

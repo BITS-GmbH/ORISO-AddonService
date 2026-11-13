@@ -189,3 +189,36 @@ databaseChangeLog:
                   name: addon_name
               - column:
                   name: created_at
+  - changeSet:
+      id: 004-addon-global-switch
+      author: addonservice
+      changes:
+        - createTable:
+            tableName: addon_global_switch
+            columns:
+              - column:
+                  name: addon_name
+                  type: VARCHAR(64)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: enabled
+                  type: BOOLEAN
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_at
+                  type: TIMESTAMP(6)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: updated_by
+                  type: VARCHAR(64)
+        # Add-ons that are already switched on somewhere keep working: they start globally on.
+        # Add-ons discovered later start globally off.
+        - sql:
+            sql: >-
+              INSERT INTO addon_global_switch (addon_name, enabled, updated_at, updated_by)
+              SELECT DISTINCT addon_name, TRUE, CURRENT_TIMESTAMP, 'migration'
+              FROM addon_enablement WHERE enabled = TRUE

@@ -2,28 +2,50 @@ package org.oriso.addonservice.enablement;
 
 import java.time.Clock;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * An add-on is off until a SuperAdmin switches it on for a Träger. Within an enabled Träger,
- * single agencies can be switched off (or explicitly on again). Without an enabled Träger, an
- * agency switch has no effect.
+ * Three levels, each a complete off switch for the ones below it: an add-on is off until a
+ * SuperAdmin switches it on globally and for a Träger. Within an enabled Träger, single agencies
+ * can be switched off (or explicitly on again). Without an enabled Träger, an agency switch has no
+ * effect; without the global switch, neither has.
  */
 @Service
 public class EnablementService {
 
   private final AddonEnablementRepository repository;
+  private final AddonGlobalSwitchRepository globalSwitches;
   private final Clock clock;
 
-  public EnablementService(AddonEnablementRepository repository, Clock clock) {
+  public EnablementService(
+      AddonEnablementRepository repository, AddonGlobalSwitchRepository globalSwitches, Clock clock) {
     this.repository = repository;
+    this.globalSwitches = globalSwitches;
     this.clock = clock;
   }
 
   @Transactional(readOnly = true)
+  public boolean isGloballyEnabled(String addon) {
+    return globalSwitches.findById(addon).map(AddonGlobalSwitch::isEnabled).orElse(false);
+  }
+
+  @Transactional(readOnly = true)
+  public Optional<AddonGlobalSwitch> globalSwitch(String addon) {
+    return globalSwitches.findById(addon);
+  }
+
+  @Transactional
+  public AddonGlobalSwitch setGlobal(String addon, boolean enabled, String by) {
+    var row = globalSwitches.findById(addon).orElseGet(() -> new AddonGlobalSwitch(addon));
+    row.set(enabled, clock.instant(), by);
+    return globalSwitches.save(row);
+  }
+
+  @Transactional(readOnly = true)
   public boolean isEnabled(String addon, Long tenantId, Long agencyId) {
-    if (tenantId == null) {
+    if (tenantId == null || !isGloballyEnabled(addon)) {
       return false;
     }
     boolean tenantEnabled =

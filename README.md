@@ -14,6 +14,7 @@ discovered by the platform and enabled per Träger. Design: ADR-031 (draft,
 | `GET /.well-known/jwks.json` | anyone | Public key add-ons use to verify the token |
 | `GET /admin/addons?tenantId=` | admins of the Träger | Registered add-ons with their switches |
 | `GET /admin/addons/{name}/tenants` | SuperAdmin | Every Träger with a switch or agency overrides for the add-on: `enabled`, `updatedAt`, `updatedBy`, `agenciesEnabled`, `agenciesDisabled` |
+| `PUT /admin/addons/{name}/global` | SuperAdmin | Switch an add-on on or off for the whole platform (default off) |
 | `PUT /admin/addons/{name}/tenants/{tenantId}` | SuperAdmin | Switch an add-on on or off for a Träger |
 | `PUT`/`DELETE /admin/addons/{name}/tenants/{tenantId}/agencies/{agencyId}` | admins of the Träger | Override for one agency |
 | `GET`/`PUT /admin/addons/{name}/settings?tenantId=&agencyId=` | admins of the Träger | Settings schema and stored values; PUT validates against the schema |
@@ -26,7 +27,7 @@ discovered by the platform and enabled per Träger. Design: ADR-031 (draft,
 
 ingress-nginx rewrites `/service/addons/...` to `/addons/...`, like the other services.
 
-**Enablement:** off until a SuperAdmin enables an add-on for a Träger. Within an enabled
+**Enablement:** off until a SuperAdmin switches an add-on on globally and enables it for a Träger. The global switch is off for newly discovered add-ons and turns the add-on off everywhere, whatever the Träger switches say. Within an enabled
 Träger, agencies can be switched off (or on again). An agency switch alone has no effect.
 
 **Agency context:** when the web app sends `X-Oriso-Agency-Id`, the AddonService checks with
