@@ -2,6 +2,9 @@ package org.oriso.addonservice.web;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import java.util.stream.Collectors;
 import org.oriso.addonservice.enablement.AddonEnablement;
 import org.oriso.addonservice.enablement.EnablementService;
 import org.oriso.addonservice.manifest.AddonManifest;
@@ -45,6 +48,23 @@ public class AdminController {
     requireTenantAdmin(caller, tenant);
     List<AddonEnablement> switches = enablement.forTenant(tenant);
     return registry.all().stream().map(addon -> toAdminAddon(addon, tenant, switches)).toList();
+  }
+
+  /**
+   * The Träger an add-on has a switch or agency overrides for, for the add-on centred view in
+   * ORISO-Admin. SuperAdmins only: it shows every Träger.
+   */
+  @GetMapping("/{name}/tenants")
+  public List<TenantState> tenants(@AuthenticationPrincipal Jwt jwt, @PathVariable String name) {
+    Caller caller = Caller.from(jwt);
+    if (!caller.isSuperAdmin()) {
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only platform admins see all Träger");
+    }
+    requireKnown(name);
+    Map<Long, List<AddonEnablement>> byTenant =
+        enablement.forAddon(name).stream()
+            .collect(Collectors.groupingBy(AddonEnablement::getTenantId, TreeMap::new, Collectors.toList()));
+    return byTenant.entrySet().stream().map(entry -> TenantState.of(entry.getKey(), entry.getValue())).toList();
   }
 
   @PutMapping("/{name}/tenants/{tenantId}")
@@ -118,6 +138,30 @@ public class AdminController {
   public record Switch(Long tenantId, Long agencyId, boolean enabled, Instant updatedAt, String updatedBy) {
     static Switch of(AddonEnablement row) {
       return new Switch(row.getTenantId(), row.getAgencyId(), row.isEnabled(), row.getUpdatedAt(), row.getUpdatedBy());
+    }
+  }
+
+  /**
+   * One Träger of an add-on: its switch ({@code enabled} false and no {@code updatedAt} when only
+   * agency overrides exist) and how many agencies are switched on or off on their own.
+   */
+  public record TenantState(
+      long tenantId,
+      boolean enabled,
+      Instant updatedAt,
+      String updatedBy,
+      long agenciesEnabled,
+      long agenciesDisabled) {
+    static TenantState of(long tenantId, List<AddonEnablement> rows) {
+      var tenantSwitch = rows.stream().filter(row -> row.getAgencyId() == null).findFirst();
+      var agencies = rows.stream().filter(row -> row.getAgencyId() != null).toList();
+      return new TenantState(
+          tenantId,
+          tenantSwitch.map(AddonEnablement::isEnabled).orElse(false),
+          tenantSwitch.map(AddonEnablement::getUpdatedAt).orElse(null),
+          tenantSwitch.map(AddonEnablement::getUpdatedBy).orElse(null),
+          agencies.stream().filter(AddonEnablement::isEnabled).count(),
+          agencies.stream().filter(row -> !row.isEnabled()).count());
     }
   }
 

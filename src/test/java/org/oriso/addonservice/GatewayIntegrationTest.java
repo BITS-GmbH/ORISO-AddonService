@@ -201,6 +201,35 @@ class GatewayIntegrationTest {
   }
 
   @Test
+  void listsTheTraegerOfAnAddonForSuperAdminsOnly() throws Exception {
+    enablement.setForTenant("demo", 2, true, "admin-1");
+    enablement.setForAgency("demo", 2, 20, false, "admin-2");
+    enablement.setForTenant("demo", 1, false, "admin-1");
+    enablement.setForAgency("demo", 3, 30, true, "admin-3");
+    enablement.setForAgency("demo", 3, 31, true, "admin-3");
+
+    mvc.perform(get("/addons/admin/addons/demo/tenants").with(user(0, "tenant-admin")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(3))
+        .andExpect(jsonPath("$[0].tenantId").value(1))
+        .andExpect(jsonPath("$[0].enabled").value(false))
+        .andExpect(jsonPath("$[1].tenantId").value(2))
+        .andExpect(jsonPath("$[1].enabled").value(true))
+        .andExpect(jsonPath("$[1].updatedBy").value("admin-1"))
+        .andExpect(jsonPath("$[1].agenciesDisabled").value(1))
+        .andExpect(jsonPath("$[1].agenciesEnabled").value(0))
+        .andExpect(jsonPath("$[2].tenantId").value(3))
+        .andExpect(jsonPath("$[2].enabled").value(false))
+        .andExpect(jsonPath("$[2].updatedAt").doesNotExist())
+        .andExpect(jsonPath("$[2].agenciesEnabled").value(2));
+
+    mvc.perform(get("/addons/admin/addons/demo/tenants").with(user(1, "tenant-admin")))
+        .andExpect(status().isForbidden());
+    mvc.perform(get("/addons/admin/addons/unknown/tenants").with(user(0, "tenant-admin")))
+        .andExpect(status().isNotFound());
+  }
+
+  @Test
   void publishesItsSigningKey() throws Exception {
     mvc.perform(get("/addons/.well-known/jwks.json"))
         .andExpect(status().isOk())

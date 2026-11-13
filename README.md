@@ -13,6 +13,7 @@ discovered by the platform and enabled per Träger. Design: ADR-031 (draft,
 | `GET /{name}/ui/**` | anyone | The add-on's bundle and assets (loaded with `import()`, which cannot send a token) |
 | `GET /.well-known/jwks.json` | anyone | Public key add-ons use to verify the token |
 | `GET /admin/addons?tenantId=` | admins of the Träger | Registered add-ons with their switches |
+| `GET /admin/addons/{name}/tenants` | SuperAdmin | Every Träger with a switch or agency overrides for the add-on: `enabled`, `updatedAt`, `updatedBy`, `agenciesEnabled`, `agenciesDisabled` |
 | `PUT /admin/addons/{name}/tenants/{tenantId}` | SuperAdmin | Switch an add-on on or off for a Träger |
 | `PUT`/`DELETE /admin/addons/{name}/tenants/{tenantId}/agencies/{agencyId}` | admins of the Träger | Override for one agency |
 | `GET`/`PUT /admin/addons/{name}/settings?tenantId=&agencyId=` | admins of the Träger | Settings schema and stored values; PUT validates against the schema |
