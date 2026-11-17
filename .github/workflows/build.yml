@@ -22,7 +22,8 @@ jobs:
 
   build-and-push:
     needs: test
-    if: github.event_name != 'pull_request'
+    # The internal registry and runner exist only in the BITS mirror.
+    if: github.event_name != 'pull_request' && github.repository_owner == 'BITS-GmbH'
     runs-on: [generic, on-prem]
     steps:
       - name: Login to Harbor
