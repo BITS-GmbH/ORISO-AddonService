@@ -191,6 +191,19 @@ class ManifestValidatorTest {
   }
 
   @Test
+  void limitsTheLengthOfAppDescriptions() {
+    var shortText =
+        new AddonManifest.App(
+            "goals", Map.of("de", "Ziele"), List.of("asker.navigation"), null, null, null, Map.of("de", "Kurz erklärt"));
+    var longText =
+        new AddonManifest.App(
+            "goals", Map.of("de", "Ziele"), List.of("asker.navigation"), null, null, null, Map.of("de", "x".repeat(201)));
+    assertThat(ManifestValidator.problems(manifest("demo", "oriso-addon/v1", "/ui/e.js", List.of(shortText)))).isEmpty();
+    assertThat(ManifestValidator.problems(manifest("demo", "oriso-addon/v1", "/ui/e.js", List.of(longText))))
+        .anyMatch(p -> p.contains("description"));
+  }
+
+  @Test
   void acceptsAnSvgIconBelowUi() {
     assertThat(ManifestValidator.problems(withIcon(null))).isEmpty();
     assertThat(ManifestValidator.problems(withIcon("/ui/icons/goals.svg"))).isEmpty();

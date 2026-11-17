@@ -54,22 +54,33 @@ public record AddonManifest(
       List<String> slots,
       String visibility,
       List<Screenshot> screenshots,
-      String icon) {
+      String icon,
+      Map<String, String> description) {
 
     public static final String STATIC = "static";
     public static final String DYNAMIC = "dynamic";
 
     public App(String id, Map<String, String> title, List<String> slots, String visibility) {
-      this(id, title, slots, visibility, null, null);
+      this(id, title, slots, visibility, null, null, null);
     }
 
     public App(
         String id, Map<String, String> title, List<String> slots, String visibility, List<Screenshot> screenshots) {
-      this(id, title, slots, visibility, screenshots, null);
+      this(id, title, slots, visibility, screenshots, null, null);
+    }
+
+    public App(
+        String id,
+        Map<String, String> title,
+        List<String> slots,
+        String visibility,
+        List<Screenshot> screenshots,
+        String icon) {
+      this(id, title, slots, visibility, screenshots, icon, null);
     }
 
     public App withIcon(String newIcon) {
-      return new App(id, title, slots, visibility, screenshots, newIcon);
+      return new App(id, title, slots, visibility, screenshots, newIcon, description);
     }
 
     public List<String> slots() {

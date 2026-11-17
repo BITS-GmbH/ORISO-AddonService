@@ -16,6 +16,7 @@ public final class ManifestValidator {
   private static final Pattern PATH = Pattern.compile("^(/[A-Za-z0-9._-]+)+$");
   private static final Pattern ICON = Pattern.compile("^/ui(/[A-Za-z0-9._-]+)+\\.svg$");
   private static final int MAX_ICON_LENGTH = 200;
+  private static final int MAX_DESCRIPTION_LENGTH = 200;
 
   /** Names that would collide with the AddonService's own routes under the public path. */
   private static final Set<String> RESERVED = Set.of("registry", "admin", "well-known", "host", "calendar", "public");
@@ -79,6 +80,10 @@ public final class ManifestValidator {
       if (app.icon() != null
           && (app.icon().length() > MAX_ICON_LENGTH || !ICON.matcher(app.icon()).matches() || app.icon().contains(".."))) {
         problems.add("app '" + app.id() + "' icon must be an .svg path below /ui/ of at most " + MAX_ICON_LENGTH + " characters");
+      }
+      if (app.description() != null
+          && app.description().values().stream().anyMatch(text -> text == null || text.length() > MAX_DESCRIPTION_LENGTH)) {
+        problems.add("app '" + app.id() + "' description texts must have at most " + MAX_DESCRIPTION_LENGTH + " characters");
       }
       screenshotProblems(app, readmeHosts, problems);
     }

@@ -91,7 +91,8 @@ public class RegistryController {
                         app.title() == null ? Map.of() : app.title(),
                         visibleSlots(app, caller),
                         app.isDynamic() ? dynamicStates.get(app.id()).badge() : null,
-                        app.icon() == null ? null : base + app.icon()))
+                        app.icon() == null ? null : base + app.icon(),
+                        app.description()))
             .toList();
     return new AvailableAddon(
         manifest.name(), manifest.version(), manifest.react(), base + manifest.ui(), base + "/api", apps);
@@ -103,5 +104,11 @@ public class RegistryController {
       String name, String version, String react, String entry, String apiBase, List<AvailableApp> apps) {}
 
   @JsonInclude(JsonInclude.Include.NON_NULL)
-  public record AvailableApp(String id, Map<String, String> title, List<String> slots, Integer badge, String icon) {}
+  public record AvailableApp(
+      String id,
+      Map<String, String> title,
+      List<String> slots,
+      Integer badge,
+      String icon,
+      Map<String, String> description) {}
 }
