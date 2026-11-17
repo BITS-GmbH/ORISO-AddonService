@@ -186,7 +186,12 @@ Each add-on serves `/.well-known/oriso-addon.json`. Invalid manifests are logged
   "apps": [
     { "id": "goals", "title": { "de": "Ausgangssituation und Ziele" },
       "slots": ["asker.navigation", "consultant.session", "consultant.asker-profile"],
-      "visibility": "dynamic" }
+      "visibility": "dynamic",
+      "screenshots": [
+        { "slot": "consultant.session",
+          "url": "https://raw.githubusercontent.com/BITS-GmbH/oriso-addon-digisucht-tools/main/docs/goals-session.png",
+          "caption": { "de": "Ziele im Fall", "en": "Goals in the case" } }
+      ] }
   ]
 }
 ```
@@ -197,6 +202,11 @@ Each add-on serves `/.well-known/oriso-addon.json`. Invalid manifests are logged
 otherwise the manifest is invalid. The AddonService fetches it for ORISO-Admin (5 s, at most
 512 KB, redirects only on the same host), caches it per add-on and version for 10 minutes and
 passes the Markdown on unrendered; the admin UI sanitizes it.
+
+`screenshots` (optional, per app, at most 6) show the app in one of its slots in ORISO-Admin:
+`slot` must be one of the app's `slots`, `url` an absolute `https` URL on a host in
+`addons.readme.allowed-hosts` like `readme`, `caption` an optional localized text. Otherwise the
+manifest is invalid. The browser of the admin loads the images directly from that host.
 
 `visibility` is `static` (default: the app is shown wherever its slot and the enablement allow)
 or `dynamic` (the add-on decides per user, see Registry).
@@ -224,7 +234,7 @@ Slots and who sees them:
 | `ADDONS_CALENDAR_TIMEOUT` | `3s` | Per add-on |
 | `ADDONS_VISIBILITY_TIMEOUT` | `2s` | `GET /visibility`, per add-on |
 | `ADDONS_VISIBILITY_CACHETTL` | `30s` | Cache of `GET /visibility` answers per user, add-on and context |
-| `ADDONS_README_ALLOWEDHOSTS` | `raw.githubusercontent.com` | Comma-separated hosts a manifest `readme` may point to |
+| `ADDONS_README_ALLOWEDHOSTS` | `raw.githubusercontent.com` | Comma-separated hosts a manifest `readme` and app `screenshots` may point to |
 | `ADDONS_README_TIMEOUT` / `_MAXSIZE` / `_CACHETTL` | `5s` / `512KB` / `10m` | Fetching the README |
 
 ## Demo add-on

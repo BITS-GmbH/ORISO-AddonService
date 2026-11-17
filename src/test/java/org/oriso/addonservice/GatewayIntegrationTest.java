@@ -211,6 +211,8 @@ class GatewayIntegrationTest {
         .andExpect(jsonPath("$[0].mode").value("ON"))
         .andExpect(jsonPath("$[0].tenantCanSwitch").value(false))
         .andExpect(jsonPath("$[0].hasReadme").value(false))
+        .andExpect(jsonPath("$[0].manifest.apps[0].screenshots[0].slot").value("asker.navigation"))
+        .andExpect(jsonPath("$[0].manifest.apps[0].screenshots[0].caption.en").value("Page"))
         .andExpect(jsonPath("$[0].agencyOverrides[0].agencyId").value(10));
 
     mvc.perform(get("/addons/admin/addons").with(user(1, "consultant"))).andExpect(status().isForbidden());

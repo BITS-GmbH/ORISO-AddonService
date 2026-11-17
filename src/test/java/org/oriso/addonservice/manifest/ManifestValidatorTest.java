@@ -2,6 +2,7 @@ package org.oriso.addonservice.manifest;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -112,5 +113,55 @@ class ManifestValidatorTest {
     }
     assertThat(ManifestValidator.problems(withReadme("https://docs.example/README.md"), List.of("docs.example")))
         .isEmpty();
+  }
+
+  private static AddonManifest withScreenshots(AddonManifest.Screenshot... screenshots) {
+    var app =
+        new AddonManifest.App(
+            "goals", Map.of("de", "Ziele"), List.of("asker.navigation", "consultant.session"), null, List.of(screenshots));
+    return manifest("demo", "oriso-addon/v1", "/ui/e.js", List.of(app));
+  }
+
+  private static AddonManifest.Screenshot screenshot(String slot, String url) {
+    return new AddonManifest.Screenshot(slot, url, Map.of("de", "Bild", "en", "Image"));
+  }
+
+  @Test
+  void acceptsScreenshotsOfTheAppsSlotsOnAnAllowedHost() {
+    String url = "https://raw.githubusercontent.com/BITS-GmbH/oriso-addon-digisucht-tools/main/docs/goals.png";
+    assertThat(ManifestValidator.problems(withScreenshots())).isEmpty();
+    assertThat(
+            ManifestValidator.problems(
+                withScreenshots(
+                    screenshot("asker.navigation", url),
+                    new AddonManifest.Screenshot("consultant.session", url, null))))
+        .isEmpty();
+    assertThat(ManifestValidator.problems(withScreenshots(screenshot("admin.page", url))))
+        .anyMatch(p -> p.contains("screenshot slot"));
+    assertThat(ManifestValidator.problems(withScreenshots(screenshot(null, url))))
+        .anyMatch(p -> p.contains("screenshot slot"));
+    for (String invalid :
+        Arrays.asList(
+            "http://raw.githubusercontent.com/a/b.png",
+            "https://evil.example/b.png",
+            "https://user@raw.githubusercontent.com/b.png",
+            "data:image/png;base64,AAAA",
+            "/docs/b.png",
+            "",
+            null)) {
+      assertThat(ManifestValidator.problems(withScreenshots(screenshot("asker.navigation", invalid))))
+          .as(String.valueOf(invalid))
+          .anyMatch(p -> p.contains("screenshot url"));
+    }
+    var onDocsHost = withScreenshots(screenshot("asker.navigation", "https://docs.example/b.png"));
+    assertThat(ManifestValidator.problems(onDocsHost, List.of("docs.example"))).isEmpty();
+  }
+
+  @Test
+  void acceptsAtMostSixScreenshotsPerApp() {
+    var shot = screenshot("asker.navigation", "https://raw.githubusercontent.com/a/b.png");
+    assertThat(ManifestValidator.problems(withScreenshots(shot, shot, shot, shot, shot, shot))).isEmpty();
+    assertThat(ManifestValidator.problems(withScreenshots(shot, shot, shot, shot, shot, shot, shot)))
+        .anyMatch(p -> p.contains("more than 6 screenshots"));
   }
 }

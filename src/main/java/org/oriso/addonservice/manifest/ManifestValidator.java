@@ -18,6 +18,8 @@ public final class ManifestValidator {
   /** Names that would collide with the AddonService's own routes under the public path. */
   private static final Set<String> RESERVED = Set.of("registry", "admin", "well-known", "host", "calendar");
 
+  public static final int MAX_SCREENSHOTS_PER_APP = 6;
+
   public static final Set<String> DEFAULT_README_HOSTS = Set.of("raw.githubusercontent.com");
 
   private ManifestValidator() {}
@@ -46,7 +48,7 @@ public final class ManifestValidator {
         && (!PATH.matcher(manifest.calendar()).matches() || manifest.calendar().contains(".."))) {
       problems.add("calendar must be a plain path such as /calendar");
     }
-    if (manifest.readme() != null && !isAllowedReadme(manifest.readme(), readmeHosts)) {
+    if (manifest.readme() != null && !isAllowedUrl(manifest.readme(), readmeHosts)) {
       problems.add("readme must be an https URL on " + String.join(", ", readmeHosts));
     }
     if (manifest.apps().isEmpty()) {
@@ -72,14 +74,36 @@ public final class ManifestValidator {
           problems.add("app '" + app.id() + "' uses unknown slot '" + slot + "'");
         }
       }
+      screenshotProblems(app, readmeHosts, problems);
     }
     return problems;
   }
 
-  private static boolean isAllowedReadme(String readme, Collection<String> hosts) {
+  private static void screenshotProblems(AddonManifest.App app, Collection<String> hosts, List<String> problems) {
+    if (app.screenshots().size() > MAX_SCREENSHOTS_PER_APP) {
+      problems.add("app '" + app.id() + "' has more than " + MAX_SCREENSHOTS_PER_APP + " screenshots");
+    }
+    for (var screenshot : app.screenshots()) {
+      if (screenshot == null) {
+        problems.add("app '" + app.id() + "' has an empty screenshot");
+        continue;
+      }
+      if (screenshot.slot() == null || !app.slots().contains(screenshot.slot())) {
+        problems.add("app '" + app.id() + "' screenshot slot must be one of its slots");
+      }
+      if (!isAllowedUrl(screenshot.url(), hosts)) {
+        problems.add("app '" + app.id() + "' screenshot url must be an https URL on " + String.join(", ", hosts));
+      }
+    }
+  }
+
+  private static boolean isAllowedUrl(String url, Collection<String> hosts) {
+    if (url == null) {
+      return false;
+    }
     URI uri;
     try {
-      uri = new URI(readme);
+      uri = new URI(url);
     } catch (Exception e) {
       return false;
     }

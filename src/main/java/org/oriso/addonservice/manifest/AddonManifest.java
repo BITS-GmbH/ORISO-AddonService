@@ -40,19 +40,32 @@ public record AddonManifest(
   }
 
   @JsonIgnoreProperties(ignoreUnknown = true)
-  public record App(String id, Map<String, String> title, List<String> slots, String visibility) {
+  public record App(
+      String id, Map<String, String> title, List<String> slots, String visibility, List<Screenshot> screenshots) {
 
     public static final String STATIC = "static";
     public static final String DYNAMIC = "dynamic";
 
+    public App(String id, Map<String, String> title, List<String> slots, String visibility) {
+      this(id, title, slots, visibility, null);
+    }
+
     public List<String> slots() {
       return slots == null ? List.of() : slots;
+    }
+
+    public List<Screenshot> screenshots() {
+      return screenshots == null ? List.of() : screenshots;
     }
 
     public boolean isDynamic() {
       return DYNAMIC.equals(visibility);
     }
   }
+
+  /** An image of an app in one of its slots, shown in ORISO-Admin. */
+  @JsonIgnoreProperties(ignoreUnknown = true)
+  public record Screenshot(String slot, String url, Map<String, String> caption) {}
 
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record Stat(String id, Map<String, String> label, String type) {}

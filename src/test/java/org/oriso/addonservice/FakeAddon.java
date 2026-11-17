@@ -28,7 +28,11 @@ final class FakeAddon implements AutoCloseable {
           { "id": "missing", "label": { "de": "Fehlt" }, "type": "count" }
         ],
         "apps": [
-          { "id": "client-page", "title": { "de": "Demo" }, "slots": ["asker.navigation"] },
+          { "id": "client-page", "title": { "de": "Demo" }, "slots": ["asker.navigation"],
+            "screenshots": [
+              { "slot": "asker.navigation", "url": "https://raw.githubusercontent.com/a/b/page.png",
+                "caption": { "de": "Seite", "en": "Page" } }
+            ] },
           { "id": "case-panel", "title": { "de": "Demo" }, "slots": ["consultant.session", "consultant.asker-profile"] }
         ]
       }
