@@ -157,11 +157,11 @@ with an error log after 7 days. Handlers must be idempotent and accept unknown i
 {"id":"…","type":"user.deleted","occurredAt":"…","tenantId":1,"userId":"…","role":"asker"}
 {"id":"…","type":"session.deleted","occurredAt":"…","tenantId":1,"sessionId":16,"askerId":"…","agencyId":0}
 {"id":"…","type":"user.registered","occurredAt":"…","tenantId":1,"userId":"…","registrationRef":"…"}
-{"id":"…","type":"session.interaction","occurredAt":"…","tenantId":1,"sessionId":16,"agencyId":10,"consultantId":"…","interaction":"message|call|video_call|appointment"}
+{"id":"…","type":"session.interaction","occurredAt":"…","tenantId":1,"sessionId":16,"agencyId":10,"consultantId":"…","interactionType":"message|call|video_call|appointment"}
 ```
 
 For `user.registered` and `session.interaction` only these fields are forwarded; events without
-`userId`, without `sessionId` or with another `interaction` are dropped.
+`userId`, without `sessionId` or with another `interactionType` are dropped.
 
 **`POST /host/audit`**: `action` matches `[a-z0-9._-]{1,64}`, `summary` is plain text per locale
 (`de` required, max 300), `subject` is `self`, `asker` (403 without `askerId` in the token) or

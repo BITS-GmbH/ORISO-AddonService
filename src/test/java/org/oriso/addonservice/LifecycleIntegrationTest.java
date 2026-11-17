@@ -178,7 +178,7 @@ class LifecycleIntegrationTest {
     String interaction =
         """
         {"id":"ev-i","type":"session.interaction","occurredAt":"2026-11-17T10:00:00Z","tenantId":1,
-         "sessionId":16,"agencyId":10,"consultantId":"consultant-1","interaction":"video_call","message":"Hallo"}
+         "sessionId":16,"agencyId":10,"consultantId":"consultant-1","interactionType":"video_call","message":"Hallo"}
         """;
     assertThat(events.accept(interaction)).isEqualTo(1);
     assertThat(dispatcher.dispatch()).isEqualTo(1);
@@ -188,7 +188,7 @@ class LifecycleIntegrationTest {
                 json.readTree(
                     """
                     {"id":"ev-i","type":"session.interaction","occurredAt":"2026-11-17T10:00:00Z","tenantId":1,
-                     "sessionId":16,"agencyId":10,"consultantId":"consultant-1","interaction":"video_call"}
+                     "sessionId":16,"agencyId":10,"consultantId":"consultant-1","interactionType":"video_call"}
                     """)));
 
     assertThat(events.accept(interaction.replace("ev-i", "ev-j").replace("video_call", "chat"))).isZero();

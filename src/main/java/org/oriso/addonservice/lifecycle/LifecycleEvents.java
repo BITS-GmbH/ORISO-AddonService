@@ -38,7 +38,7 @@ public class LifecycleEvents {
   private static final Map<String, List<String>> FIELDS =
       Map.of(
           USER_REGISTERED, List.of("userId", "registrationRef"),
-          SESSION_INTERACTION, List.of("sessionId", "agencyId", "consultantId", "interaction"));
+          SESSION_INTERACTION, List.of("sessionId", "agencyId", "consultantId", "interactionType"));
 
   private static final int MAX_REGISTRATION_REF = 128;
 
@@ -112,8 +112,8 @@ public class LifecycleEvents {
       if (!event.hasNonNull("sessionId") || !event.get("sessionId").canConvertToLong()) {
         return "sessionId missing";
       }
-      if (!INTERACTIONS.contains(text(event, "interaction"))) {
-        return "interaction must be one of " + INTERACTIONS;
+      if (!INTERACTIONS.contains(text(event, "interactionType"))) {
+        return "interactionType must be one of " + INTERACTIONS;
       }
     }
     return null;

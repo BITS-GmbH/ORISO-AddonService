@@ -116,12 +116,12 @@ contains:
 
 ```json
 {"id":"…","type":"user.registered","occurredAt":"…","tenantId":1,"userId":"…","registrationRef":"…"}
-{"id":"…","type":"session.interaction","occurredAt":"…","tenantId":1,"sessionId":16,"agencyId":10,"consultantId":"…","interaction":"message"}
+{"id":"…","type":"session.interaction","occurredAt":"…","tenantId":1,"sessionId":16,"agencyId":10,"consultantId":"…","interactionType":"message"}
 ```
 
 - `user.registered`: `userId` is required; `registrationRef` is optional (absent when the
   registration did not go through an add-on), at most 128 characters.
-- `session.interaction`: `sessionId` is required; `interaction` is one of `message`, `call`,
-  `video_call`, `appointment` (named `interaction` because `type` is the event type). No content
+- `session.interaction`: `sessionId` is required; `interactionType` is one of `message`, `call`,
+  `video_call`, `appointment` (named `interactionType` because `type` is the event type). No content
   of the interaction is ever sent.
 - Events that break these rules are logged and dropped.
