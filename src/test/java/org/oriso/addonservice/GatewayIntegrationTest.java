@@ -8,6 +8,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -17,17 +18,21 @@ import com.nimbusds.jose.jwk.RSAKey;
 import jakarta.servlet.http.Cookie;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.oriso.addonservice.discovery.AddonDiscovery;
 import org.oriso.addonservice.enablement.AddonEnablementRepository;
 import org.oriso.addonservice.enablement.EnablementService;
+import org.oriso.addonservice.enablement.TenantMode;
+import org.oriso.addonservice.readme.ReadmeService;
 import org.oriso.addonservice.security.AgencyMembership;
 import org.oriso.addonservice.token.AddonTokenIssuer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
@@ -37,6 +42,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.server.ResponseStatusException;
 
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -51,6 +57,7 @@ class GatewayIntegrationTest {
   @Autowired AddonEnablementRepository repository;
   @Autowired AddonTokenIssuer issuer;
   @MockitoBean AgencyMembership membership;
+  @MockitoBean ReadmeService readmes;
 
   @DynamicPropertySource
   static void addons(DynamicPropertyRegistry registry) {
@@ -177,12 +184,17 @@ class GatewayIntegrationTest {
 
     mvc.perform(put("/addons/admin/addons/demo/tenants/1").with(user(1, "tenant-admin"))
             .contentType(MediaType.APPLICATION_JSON).content(on))
-        .andExpect(status().isForbidden());
+        .andExpect(status().isNotFound());
 
     mvc.perform(put("/addons/admin/addons/demo/tenants/1").with(user(0, "tenant-admin", "agency-admin"))
             .contentType(MediaType.APPLICATION_JSON).content(on))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.enabled").value(true));
+        .andExpect(jsonPath("$.enabled").value(true))
+        .andExpect(jsonPath("$.mode").value("ON"));
+
+    mvc.perform(put("/addons/admin/addons/demo/tenants/1").with(user(1, "tenant-admin"))
+            .contentType(MediaType.APPLICATION_JSON).content(off))
+        .andExpect(status().isForbidden());
 
     mvc.perform(put("/addons/admin/addons/demo/tenants/1/agencies/10").with(user(1, "single-tenant-admin"))
             .contentType(MediaType.APPLICATION_JSON).content(off))
@@ -196,6 +208,9 @@ class GatewayIntegrationTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$[0].manifest.name").value("demo"))
         .andExpect(jsonPath("$[0].enabled").value(true))
+        .andExpect(jsonPath("$[0].mode").value("ON"))
+        .andExpect(jsonPath("$[0].tenantCanSwitch").value(false))
+        .andExpect(jsonPath("$[0].hasReadme").value(false))
         .andExpect(jsonPath("$[0].agencyOverrides[0].agencyId").value(10));
 
     mvc.perform(get("/addons/admin/addons").with(user(1, "consultant"))).andExpect(status().isForbidden());
@@ -214,7 +229,9 @@ class GatewayIntegrationTest {
         .andExpect(jsonPath("$.length()").value(3))
         .andExpect(jsonPath("$[0].tenantId").value(1))
         .andExpect(jsonPath("$[0].enabled").value(false))
+        .andExpect(jsonPath("$[0].mode").value("OFF"))
         .andExpect(jsonPath("$[1].tenantId").value(2))
+        .andExpect(jsonPath("$[1].mode").value("ON"))
         .andExpect(jsonPath("$[1].enabled").value(true))
         .andExpect(jsonPath("$[1].updatedBy").value("admin-1"))
         .andExpect(jsonPath("$[1].agenciesDisabled").value(1))
@@ -250,6 +267,9 @@ class GatewayIntegrationTest {
 
     mvc.perform(get("/addons/admin/addons").with(user(1, "tenant-admin")))
         .andExpect(status().isOk())
+        .andExpect(jsonPath("$").isEmpty());
+    mvc.perform(get("/addons/admin/addons?tenantId=1").with(user(0, "tenant-admin")))
+        .andExpect(status().isOk())
         .andExpect(jsonPath("$[0].global.enabled").value(false))
         .andExpect(jsonPath("$[0].enabled").value(true));
     mvc.perform(get("/addons/demo/api/echo").with(user(1, "consultant")))
@@ -260,6 +280,95 @@ class GatewayIntegrationTest {
         .andExpect(status().isOk());
     mvc.perform(get("/addons/admin/addons").with(user(1, "tenant-admin")))
         .andExpect(jsonPath("$[0].global.enabled").value(true));
+  }
+
+  @Test
+  void onlySuperAdminsSetTheModeOfATraeger() throws Exception {
+    mvc.perform(put("/addons/admin/addons/demo/tenants/1/mode").with(user(1, "tenant-admin"))
+            .contentType(MediaType.APPLICATION_JSON).content("{\"mode\":\"ON\"}"))
+        .andExpect(status().isForbidden());
+    mvc.perform(put("/addons/admin/addons/demo/tenants/1/mode").with(user(0, "tenant-admin"))
+            .contentType(MediaType.APPLICATION_JSON).content("{\"mode\":\"SOMETIMES\"}"))
+        .andExpect(status().isBadRequest());
+    mvc.perform(put("/addons/admin/addons/unknown/tenants/1/mode").with(user(0, "tenant-admin"))
+            .contentType(MediaType.APPLICATION_JSON).content("{\"mode\":\"ON\"}"))
+        .andExpect(status().isNotFound());
+
+    mvc.perform(put("/addons/admin/addons/demo/tenants/1/mode").with(user(0, "tenant-admin"))
+            .contentType(MediaType.APPLICATION_JSON).content("{\"mode\":\"ON\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.mode").value("ON"))
+        .andExpect(jsonPath("$.enabled").value(true))
+        .andExpect(jsonPath("$.updatedBy").value("user-1"));
+    mvc.perform(put("/addons/admin/addons/demo/tenants/1/mode").with(user(0, "tenant-admin"))
+            .contentType(MediaType.APPLICATION_JSON).content("{\"mode\":\"TENANT\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.mode").value("TENANT"))
+        .andExpect(jsonPath("$.enabled").value(true));
+  }
+
+  @Test
+  void traegerAdminsSeeAndSwitchAddonsByMode() throws Exception {
+    String off = "{\"enabled\":false}";
+    String on = "{\"enabled\":true}";
+
+    enablement.setMode("demo", 1L, TenantMode.ON_HIDDEN, "root");
+    mvc.perform(get("/addons/admin/addons").with(user(1, "tenant-admin"))).andExpect(jsonPath("$").isEmpty());
+    mvc.perform(get("/addons/admin/addons/demo/settings?tenantId=1").with(user(1, "tenant-admin")))
+        .andExpect(status().isNotFound());
+    mvc.perform(put("/addons/admin/addons/demo/tenants/1/agencies/10").with(user(1, "tenant-admin"))
+            .contentType(MediaType.APPLICATION_JSON).content(off))
+        .andExpect(status().isNotFound());
+    mvc.perform(get("/addons/admin/addons?tenantId=1").with(user(0, "tenant-admin")))
+        .andExpect(jsonPath("$[0].mode").value("ON_HIDDEN"))
+        .andExpect(jsonPath("$[0].tenantCanSwitch").value(true));
+
+    enablement.setMode("demo", 1L, TenantMode.TENANT, "root");
+    mvc.perform(get("/addons/admin/addons").with(user(1, "tenant-admin")))
+        .andExpect(jsonPath("$[0].mode").value("TENANT"))
+        .andExpect(jsonPath("$[0].enabled").value(true))
+        .andExpect(jsonPath("$[0].tenantCanSwitch").value(true));
+    mvc.perform(put("/addons/admin/addons/demo/tenants/1").with(user(1, "tenant-admin"))
+            .contentType(MediaType.APPLICATION_JSON).content(off))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.mode").value("TENANT"))
+        .andExpect(jsonPath("$.enabled").value(false));
+    mvc.perform(get("/addons/demo/api/echo").with(user(1, "consultant"))).andExpect(status().isForbidden());
+    mvc.perform(put("/addons/admin/addons/demo/tenants/1").with(user(1, "tenant-admin"))
+            .contentType(MediaType.APPLICATION_JSON).content(on))
+        .andExpect(status().isOk());
+    mvc.perform(get("/addons/demo/api/echo").with(user(1, "consultant"))).andExpect(status().isCreated());
+    mvc.perform(put("/addons/admin/addons/demo/tenants/2").with(user(1, "tenant-admin"))
+            .contentType(MediaType.APPLICATION_JSON).content(on))
+        .andExpect(status().isForbidden());
+
+    enablement.setMode("demo", 1L, TenantMode.OFF, "root");
+    mvc.perform(get("/addons/admin/addons").with(user(1, "tenant-admin"))).andExpect(jsonPath("$").isEmpty());
+    mvc.perform(get("/addons/demo/api/echo").with(user(1, "consultant"))).andExpect(status().isForbidden());
+  }
+
+  @Test
+  void servesTheReadmeAsMarkdownToAdminsWhoSeeTheAddon() throws Exception {
+    when(readmes.readme(any())).thenReturn(Optional.of("# Demo"));
+    mvc.perform(get("/addons/admin/addons/demo/readme").with(user(0, "tenant-admin")))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Content-Type", "text/markdown;charset=UTF-8"))
+        .andExpect(content().string("# Demo"));
+    mvc.perform(get("/addons/admin/addons/demo/readme").with(user(1, "tenant-admin")))
+        .andExpect(status().isNotFound());
+    mvc.perform(get("/addons/admin/addons/demo/readme").with(user(1, "consultant")))
+        .andExpect(status().isForbidden());
+
+    enablement.setMode("demo", 1L, TenantMode.ON, "root");
+    mvc.perform(get("/addons/admin/addons/demo/readme").with(user(1, "tenant-admin")))
+        .andExpect(status().isOk());
+
+    when(readmes.readme(any())).thenReturn(Optional.empty());
+    mvc.perform(get("/addons/admin/addons/demo/readme").with(user(1, "tenant-admin")))
+        .andExpect(status().isNotFound());
+    when(readmes.readme(any())).thenThrow(new ResponseStatusException(HttpStatus.BAD_GATEWAY));
+    mvc.perform(get("/addons/admin/addons/demo/readme").with(user(1, "tenant-admin")))
+        .andExpect(status().isBadGateway());
   }
 
   @Test

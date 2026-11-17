@@ -1,5 +1,9 @@
 package org.oriso.addonservice.web;
 
+import static org.oriso.addonservice.web.AdminAddonAccess.requireSuperAdmin;
+import static org.oriso.addonservice.web.AdminAddonAccess.requireTenantAdmin;
+
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -7,11 +11,14 @@ import java.util.TreeMap;
 import java.util.stream.Collectors;
 import org.oriso.addonservice.enablement.AddonEnablement;
 import org.oriso.addonservice.enablement.EnablementService;
+import org.oriso.addonservice.enablement.TenantMode;
 import org.oriso.addonservice.manifest.AddonManifest;
+import org.oriso.addonservice.readme.ReadmeService;
 import org.oriso.addonservice.registry.AddonRegistry;
 import org.oriso.addonservice.registry.RegisteredAddon;
 import org.oriso.addonservice.security.Caller;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -26,19 +33,27 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Enablement for ORISO-Admin. Switching an add-on on or off for a Träger is for SuperAdmins
- * only; the admins of a Träger can switch it off or on again for their agencies.
+ * Enablement for ORISO-Admin. A SuperAdmin hands an add-on to a Träger in a {@link TenantMode};
+ * the admins of the Träger see it in mode TENANT or ON, switch it themselves in mode TENANT and
+ * switch it off or on again for their agencies.
  */
 @RestController
 @RequestMapping("/addons/admin/addons")
 public class AdminController {
 
+  private static final MediaType MARKDOWN = new MediaType("text", "markdown", StandardCharsets.UTF_8);
+
   private final AddonRegistry registry;
   private final EnablementService enablement;
+  private final AdminAddonAccess access;
+  private final ReadmeService readmes;
 
-  public AdminController(AddonRegistry registry, EnablementService enablement) {
+  public AdminController(
+      AddonRegistry registry, EnablementService enablement, AdminAddonAccess access, ReadmeService readmes) {
     this.registry = registry;
     this.enablement = enablement;
+    this.access = access;
+    this.readmes = readmes;
   }
 
   @GetMapping
@@ -47,7 +62,10 @@ public class AdminController {
     long tenant = tenantId != null ? tenantId : requireTenant(caller);
     requireTenantAdmin(caller, tenant);
     List<AddonEnablement> switches = enablement.forTenant(tenant);
-    return registry.all().stream().map(addon -> toAdminAddon(addon, tenant, switches)).toList();
+    return registry.all().stream()
+        .filter(addon -> access.isVisible(caller, addon.name(), tenant))
+        .map(addon -> toAdminAddon(caller, addon, tenant, switches))
+        .toList();
   }
 
   /**
@@ -56,11 +74,8 @@ public class AdminController {
    */
   @GetMapping("/{name}/tenants")
   public List<TenantState> tenants(@AuthenticationPrincipal Jwt jwt, @PathVariable String name) {
-    Caller caller = Caller.from(jwt);
-    if (!caller.isSuperAdmin()) {
-      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only platform admins see all Träger");
-    }
-    requireKnown(name);
+    requireSuperAdmin(Caller.from(jwt), "Only platform admins see all Träger");
+    access.requireKnown(name);
     Map<Long, List<AddonEnablement>> byTenant =
         enablement.forAddon(name).stream()
             .collect(Collectors.groupingBy(AddonEnablement::getTenantId, TreeMap::new, Collectors.toList()));
@@ -72,14 +87,28 @@ public class AdminController {
   public GlobalSwitch setGlobal(
       @AuthenticationPrincipal Jwt jwt, @PathVariable String name, @RequestBody EnabledRequest request) {
     Caller caller = Caller.from(jwt);
-    if (!caller.isSuperAdmin()) {
-      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only platform admins switch an add-on globally");
-    }
-    requireKnown(name);
+    requireSuperAdmin(caller, "Only platform admins switch an add-on globally");
+    access.requireKnown(name);
     var row = enablement.setGlobal(name, request.enabled(), caller.userId());
     return new GlobalSwitch(row.isEnabled(), row.getUpdatedAt(), row.getUpdatedBy());
   }
 
+  @PutMapping("/{name}/tenants/{tenantId}/mode")
+  public Switch setMode(
+      @AuthenticationPrincipal Jwt jwt,
+      @PathVariable String name,
+      @PathVariable long tenantId,
+      @RequestBody ModeRequest request) {
+    Caller caller = Caller.from(jwt);
+    requireSuperAdmin(caller, "Only platform admins set the mode of an add-on for a Träger");
+    access.requireKnown(name);
+    TenantMode mode =
+        TenantMode.parse(request.mode())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown mode"));
+    return Switch.of(enablement.setMode(name, tenantId, mode, caller.userId()));
+  }
+
+  /** SuperAdmins always; the admins of the Träger only in mode TENANT. */
   @PutMapping("/{name}/tenants/{tenantId}")
   public Switch setForTenant(
       @AuthenticationPrincipal Jwt jwt,
@@ -87,10 +116,10 @@ public class AdminController {
       @PathVariable long tenantId,
       @RequestBody EnabledRequest request) {
     Caller caller = Caller.from(jwt);
-    if (!caller.isSuperAdmin()) {
-      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only platform admins enable add-ons for a Träger");
+    access.require(caller, name, tenantId);
+    if (!caller.isSuperAdmin() && enablement.tenantMode(name, tenantId) != TenantMode.TENANT) {
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "The Träger cannot switch this add-on");
     }
-    requireKnown(name);
     return Switch.of(enablement.setForTenant(name, tenantId, request.enabled(), caller.userId()));
   }
 
@@ -102,8 +131,7 @@ public class AdminController {
       @PathVariable long agencyId,
       @RequestBody EnabledRequest request) {
     Caller caller = Caller.from(jwt);
-    requireTenantAdmin(caller, tenantId);
-    requireKnown(name);
+    access.require(caller, name, tenantId);
     return Switch.of(enablement.setForAgency(name, tenantId, agencyId, request.enabled(), caller.userId()));
   }
 
@@ -113,15 +141,30 @@ public class AdminController {
       @PathVariable String name,
       @PathVariable long tenantId,
       @PathVariable long agencyId) {
-    requireTenantAdmin(Caller.from(jwt), tenantId);
+    access.require(Caller.from(jwt), name, tenantId);
     enablement.clearAgencyOverride(name, tenantId, agencyId);
     return ResponseEntity.noContent().build();
   }
 
-  private AdminAddon toAdminAddon(RegisteredAddon addon, long tenant, List<AddonEnablement> switches) {
+  /** The add-on's README as Markdown with absolute links; the caller renders and sanitizes it. */
+  @GetMapping("/{name}/readme")
+  public ResponseEntity<String> readme(
+      @AuthenticationPrincipal Jwt jwt, @PathVariable String name, @RequestParam(required = false) Long tenantId) {
+    Caller caller = Caller.from(jwt);
+    long tenant = tenantId != null ? tenantId : requireTenant(caller);
+    RegisteredAddon addon = access.require(caller, name, tenant);
+    String markdown =
+        readmes
+            .readme(addon)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No README"));
+    return ResponseEntity.ok().contentType(MARKDOWN).body(markdown);
+  }
+
+  private AdminAddon toAdminAddon(Caller caller, RegisteredAddon addon, long tenant, List<AddonEnablement> switches) {
     var forAddon = switches.stream().filter(s -> s.getAddonName().equals(addon.name())).toList();
-    boolean tenantEnabled =
-        forAddon.stream().filter(s -> s.getAgencyId() == null).anyMatch(AddonEnablement::isEnabled);
+    var tenantSwitch = forAddon.stream().filter(s -> s.getAgencyId() == null).findFirst();
+    TenantMode mode = tenantSwitch.map(AddonEnablement::getMode).orElse(TenantMode.OFF);
+    boolean tenantEnabled = tenantSwitch.map(AddonEnablement::isOnForTenant).orElse(false);
     var agencies =
         forAddon.stream().filter(s -> s.getAgencyId() != null).map(Switch::of).toList();
     var global =
@@ -130,13 +173,16 @@ public class AdminController {
             .map(row -> new GlobalSwitch(row.isEnabled(), row.getUpdatedAt(), row.getUpdatedBy()))
             .orElse(new GlobalSwitch(false, null, null));
     return new AdminAddon(
-        addon.manifest(), addon.source(), addon.discoveredAt(), global, tenant, tenantEnabled, agencies);
-  }
-
-  private void requireKnown(String name) {
-    if (registry.find(name).isEmpty()) {
-      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown add-on");
-    }
+        addon.manifest(),
+        addon.source(),
+        addon.discoveredAt(),
+        global,
+        tenant,
+        tenantEnabled,
+        mode.name(),
+        caller.isSuperAdmin() || mode == TenantMode.TENANT,
+        addon.manifest().hasReadme(),
+        agencies);
   }
 
   private static long requireTenant(Caller caller) {
@@ -146,27 +192,35 @@ public class AdminController {
     return caller.tenantId();
   }
 
-  private static void requireTenantAdmin(Caller caller, long tenantId) {
-    if (!caller.isAdminOfTenant(tenantId)) {
-      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not an admin of this Träger");
-    }
-  }
-
   public record EnabledRequest(boolean enabled) {}
 
-  public record Switch(Long tenantId, Long agencyId, boolean enabled, Instant updatedAt, String updatedBy) {
+  public record ModeRequest(String mode) {}
+
+  /** {@code mode} only for the switch of a Träger, null for an agency override. */
+  public record Switch(
+      Long tenantId, Long agencyId, boolean enabled, String mode, Instant updatedAt, String updatedBy) {
     static Switch of(AddonEnablement row) {
-      return new Switch(row.getTenantId(), row.getAgencyId(), row.isEnabled(), row.getUpdatedAt(), row.getUpdatedBy());
+      TenantMode mode = row.getMode();
+      boolean enabled = mode == null ? row.isEnabled() : row.isOnForTenant();
+      return new Switch(
+          row.getTenantId(),
+          row.getAgencyId(),
+          enabled,
+          mode == null ? null : mode.name(),
+          row.getUpdatedAt(),
+          row.getUpdatedBy());
     }
   }
 
   /**
-   * One Träger of an add-on: its switch ({@code enabled} false and no {@code updatedAt} when only
-   * agency overrides exist) and how many agencies are switched on or off on their own.
+   * One Träger of an add-on: its mode and whether that makes it on for the Träger ({@code OFF},
+   * {@code enabled} false and no {@code updatedAt} when only agency overrides exist) and how many
+   * agencies are switched on or off on their own.
    */
   public record TenantState(
       long tenantId,
       boolean enabled,
+      String mode,
       Instant updatedAt,
       String updatedBy,
       long agenciesEnabled,
@@ -176,7 +230,8 @@ public class AdminController {
       var agencies = rows.stream().filter(row -> row.getAgencyId() != null).toList();
       return new TenantState(
           tenantId,
-          tenantSwitch.map(AddonEnablement::isEnabled).orElse(false),
+          tenantSwitch.map(AddonEnablement::isOnForTenant).orElse(false),
+          tenantSwitch.map(AddonEnablement::getMode).orElse(TenantMode.OFF).name(),
           tenantSwitch.map(AddonEnablement::getUpdatedAt).orElse(null),
           tenantSwitch.map(AddonEnablement::getUpdatedBy).orElse(null),
           agencies.stream().filter(AddonEnablement::isEnabled).count(),
@@ -187,7 +242,11 @@ public class AdminController {
   /** {@code enabled} false and no {@code updatedAt} while nobody has switched it yet. */
   public record GlobalSwitch(boolean enabled, Instant updatedAt, String updatedBy) {}
 
-  /** {@code enabled} is the Träger switch alone; the add-on runs only while {@code global} is on too. */
+  /**
+   * {@code enabled} is whether the Träger level is on (mode ON or ON_HIDDEN, or TENANT with the
+   * Träger's switch on); the add-on runs only while {@code global} is on too. {@code
+   * tenantCanSwitch} tells whether the caller may change {@code enabled}.
+   */
   public record AdminAddon(
       AddonManifest manifest,
       String source,
@@ -195,5 +254,8 @@ public class AdminController {
       GlobalSwitch global,
       long tenantId,
       boolean enabled,
+      String mode,
+      boolean tenantCanSwitch,
+      boolean hasReadme,
       List<Switch> agencyOverrides) {}
 }

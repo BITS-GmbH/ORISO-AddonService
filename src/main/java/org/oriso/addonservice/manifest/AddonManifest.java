@@ -18,9 +18,14 @@ public record AddonManifest(
     String export,
     List<String> events,
     String health,
-    String calendar) {
+    String calendar,
+    String readme) {
 
   public static final String CONTRACT_V1 = "oriso-addon/v1";
+
+  public boolean hasReadme() {
+    return readme != null && !readme.isBlank();
+  }
 
   public List<App> apps() {
     return apps == null ? List.of() : apps;

@@ -2,6 +2,8 @@ package org.oriso.addonservice.enablement;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -31,6 +33,10 @@ public class AddonEnablement {
 
   @Column(name = "enabled", nullable = false)
   private boolean enabled;
+
+  @Enumerated(EnumType.STRING)
+  @Column(name = "mode", length = 16)
+  private TenantMode mode;
 
   @Column(name = "updated_at", nullable = false)
   private Instant updatedAt;
@@ -66,6 +72,29 @@ public class AddonEnablement {
     return enabled;
   }
 
+  /**
+   * The mode of a Träger row; agency rows have none. A Träger row without one (written before
+   * modes existed) counts as ON or OFF by its flag.
+   */
+  public TenantMode getMode() {
+    if (agencyId != null) {
+      return null;
+    }
+    if (mode == null) {
+      return enabled ? TenantMode.ON : TenantMode.OFF;
+    }
+    return mode;
+  }
+
+  /** Whether the add-on is on at the level of the Träger, before agency overrides. */
+  public boolean isOnForTenant() {
+    return switch (getMode()) {
+      case OFF -> false;
+      case ON, ON_HIDDEN -> true;
+      case TENANT -> enabled;
+    };
+  }
+
   public Instant getUpdatedAt() {
     return updatedAt;
   }
@@ -75,6 +104,13 @@ public class AddonEnablement {
   }
 
   void set(boolean enabled, Instant at, String by) {
+    this.enabled = enabled;
+    this.updatedAt = at;
+    this.updatedBy = by;
+  }
+
+  void set(TenantMode mode, boolean enabled, Instant at, String by) {
+    this.mode = mode;
     this.enabled = enabled;
     this.updatedAt = at;
     this.updatedBy = by;

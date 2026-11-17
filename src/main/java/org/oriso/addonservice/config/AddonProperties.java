@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.util.List;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
+import org.springframework.util.unit.DataSize;
 
 @ConfigurationProperties("addons")
 public record AddonProperties(
@@ -17,7 +18,8 @@ public record AddonProperties(
     @DefaultValue TechnicalClient technicalClient,
     @DefaultValue Calendar calendar,
     @DefaultValue Visibility visibility,
-    @DefaultValue Lifecycle lifecycle) {
+    @DefaultValue Lifecycle lifecycle,
+    @DefaultValue Readme readme) {
 
   public record Discovery(
       @DefaultValue("false") boolean kubernetes,
@@ -84,6 +86,13 @@ public record AddonProperties(
       @DefaultValue("3s") Duration timeout,
       @DefaultValue("200") int maxEntriesPerAddon,
       @DefaultValue("92d") Duration maxRange) {}
+
+  /** The README of an add-on (manifest {@code readme}), fetched for ORISO-Admin. */
+  public record Readme(
+      @DefaultValue("raw.githubusercontent.com") List<String> allowedHosts,
+      @DefaultValue("5s") Duration timeout,
+      @DefaultValue("512KB") DataSize maxSize,
+      @DefaultValue("10m") Duration cacheTtl) {}
 
   public record Visibility(
       @DefaultValue("2s") Duration timeout,

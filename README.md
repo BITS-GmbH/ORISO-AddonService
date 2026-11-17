@@ -12,13 +12,15 @@ discovered by the platform and enabled per Träger. Design: ADR-031 (draft,
 | `/{name}/api/**` | logged-in users | Forwarded to the add-on's `/api/**` with a short-lived token signed by the AddonService instead of the Keycloak token |
 | `GET /{name}/ui/**` | anyone | The add-on's bundle and assets (loaded with `import()`, which cannot send a token) |
 | `GET /.well-known/jwks.json` | anyone | Public key add-ons use to verify the token |
-| `GET /admin/addons?tenantId=` | admins of the Träger | Registered add-ons with their switches |
-| `GET /admin/addons/{name}/tenants` | SuperAdmin | Every Träger with a switch or agency overrides for the add-on: `enabled`, `updatedAt`, `updatedBy`, `agenciesEnabled`, `agenciesDisabled` |
+| `GET /admin/addons?tenantId=` | admins of the Träger | Add-ons with their switches: all for a SuperAdmin, for the admins of a Träger only those on globally in mode `TENANT` or `ON`. Each has `manifest`, `source`, `discoveredAt`, `global`, `tenantId`, `enabled` (Träger level on), `mode`, `tenantCanSwitch`, `hasReadme`, `agencyOverrides` |
+| `GET /admin/addons/{name}/tenants` | SuperAdmin | Every Träger with a switch or agency overrides for the add-on: `enabled`, `mode`, `updatedAt`, `updatedBy`, `agenciesEnabled`, `agenciesDisabled` |
 | `PUT /admin/addons/{name}/global` | SuperAdmin | Switch an add-on on or off for the whole platform (default off) |
-| `PUT /admin/addons/{name}/tenants/{tenantId}` | SuperAdmin | Switch an add-on on or off for a Träger |
+| `PUT /admin/addons/{name}/tenants/{tenantId}/mode` | SuperAdmin | `{"mode": "OFF\|TENANT\|ON\|ON_HIDDEN"}` for a Träger (see Enablement) |
+| `PUT /admin/addons/{name}/tenants/{tenantId}` | SuperAdmin, admins of the Träger in mode `TENANT` | `{"enabled": ...}` for a Träger |
 | `PUT`/`DELETE /admin/addons/{name}/tenants/{tenantId}/agencies/{agencyId}` | admins of the Träger | Override for one agency |
 | `GET`/`PUT /admin/addons/{name}/settings?tenantId=&agencyId=` | admins of the Träger | Settings schema and stored values; PUT validates against the schema |
 | `GET /admin/addons/{name}/stats?tenantId=` | admins of the Träger | The add-on's statistics with their labels |
+| `GET /admin/addons/{name}/readme?tenantId=` | admins of the Träger | The add-on's README (`text/markdown`) with relative links and images made absolute; 404 without one, 502 if it cannot be fetched and none is cached |
 | `GET /admin/audit?tenantId=&addon=&from=&to=&page=&size=` | admins | Audit entries of add-ons, newest first (see below) |
 | `GET /calendar?from=&to=` | logged-in users | Calendar entries of the caller's add-ons (see below) |
 | `GET /host/settings` | add-on backends | Effective settings (defaults, Träger, agency) for the add-on, Träger and agency of the add-on token |
@@ -29,8 +31,22 @@ discovered by the platform and enabled per Träger. Design: ADR-031 (draft,
 
 ingress-nginx rewrites `/service/addons/...` to `/addons/...`, like the other services.
 
-**Enablement:** off until a SuperAdmin switches an add-on on globally and enables it for a Träger. The global switch is off for newly discovered add-ons and turns the add-on off everywhere, whatever the Träger switches say. Within an enabled
-Träger, agencies can be switched off (or on again). An agency switch alone has no effect.
+**Enablement:** off until a SuperAdmin switches an add-on on globally and gives a Träger a mode
+other than `OFF`. The global switch is off for newly discovered add-ons and turns the add-on off
+everywhere, whatever the Träger switches say. Modes, set by SuperAdmins only:
+
+| Mode | On for the Träger | Admins of the Träger |
+|---|---|---|
+| `OFF` (default) | no | do not see it |
+| `TENANT` | when they switch it on | see it and switch it |
+| `ON` | yes | see it, cannot switch it |
+| `ON_HIDDEN` | yes, for every agency | do not see it |
+
+Within a Träger that is on, agencies can be switched off (or on again), except in `ON_HIDDEN`,
+where agency overrides are ignored. An agency switch alone has no effect. The admin endpoints of
+an add-on (agency overrides, settings, statistics, README) answer 404 to the admins of a Träger
+that do not see it. Switching to `TENANT` keeps whether the add-on is on; `PUT .../tenants/{id}`
+by a SuperAdmin outside `TENANT` sets `ON` (or keeps `ON_HIDDEN`) or `OFF`.
 
 **Agency context:** when the web app sends `X-Oriso-Agency-Id`, the AddonService checks with
 UserService (`/users/data`, with the caller's token) that the caller belongs to that agency,
@@ -166,6 +182,7 @@ Each add-on serves `/.well-known/oriso-addon.json`. Invalid manifests are logged
   "react": "^19",
   "ui": "/ui/entry.js",
   "calendar": "/calendar",
+  "readme": "https://raw.githubusercontent.com/BITS-GmbH/oriso-addon-digisucht-tools/main/docs/README.md",
   "apps": [
     { "id": "goals", "title": { "de": "Ausgangssituation und Ziele" },
       "slots": ["asker.navigation", "consultant.session", "consultant.asker-profile"],
@@ -173,6 +190,13 @@ Each add-on serves `/.well-known/oriso-addon.json`. Invalid manifests are logged
   ]
 }
 ```
+
+`readme` (optional) is an absolute `https` URL of a Markdown file on a host in
+`addons.readme.allowed-hosts` (default `raw.githubusercontent.com`), for example
+`https://raw.githubusercontent.com/BITS-GmbH/oriso-addon-digisucht-tools/main/docs/README.md`;
+otherwise the manifest is invalid. The AddonService fetches it for ORISO-Admin (5 s, at most
+512 KB, redirects only on the same host), caches it per add-on and version for 10 minutes and
+passes the Markdown on unrendered; the admin UI sanitizes it.
 
 `visibility` is `static` (default: the app is shown wherever its slot and the enablement allow)
 or `dynamic` (the add-on decides per user, see Registry).
@@ -200,6 +224,8 @@ Slots and who sees them:
 | `ADDONS_CALENDAR_TIMEOUT` | `3s` | Per add-on |
 | `ADDONS_VISIBILITY_TIMEOUT` | `2s` | `GET /visibility`, per add-on |
 | `ADDONS_VISIBILITY_CACHETTL` | `30s` | Cache of `GET /visibility` answers per user, add-on and context |
+| `ADDONS_README_ALLOWEDHOSTS` | `raw.githubusercontent.com` | Comma-separated hosts a manifest `readme` may point to |
+| `ADDONS_README_TIMEOUT` / `_MAXSIZE` / `_CACHETTL` | `5s` / `512KB` / `10m` | Fetching the README |
 
 ## Demo add-on
 

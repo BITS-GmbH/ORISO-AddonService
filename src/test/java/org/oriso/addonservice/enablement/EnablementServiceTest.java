@@ -77,4 +77,81 @@ class EnablementServiceTest {
       assertThat(row.getUpdatedBy()).isEqualTo("b");
     });
   }
+
+  @Test
+  void isOffWithoutAModeAndInModeOff() {
+    assertThat(enablement.tenantMode("demo", 1L)).isEqualTo(TenantMode.OFF);
+    assertThat(enablement.isEnabled("demo", 1L, null)).isFalse();
+    enablement.setForAgency("demo", 1L, 10L, true, "admin");
+    enablement.setMode("demo", 1L, TenantMode.OFF, "root");
+    assertThat(enablement.isEnabled("demo", 1L, 10L)).isFalse();
+  }
+
+  @Test
+  void onHiddenIsOnForEveryAgencyWhateverTheOverrides() {
+    enablement.setForAgency("demo", 1L, 10L, false, "admin");
+    enablement.setMode("demo", 1L, TenantMode.ON_HIDDEN, "root");
+    assertThat(enablement.isEnabled("demo", 1L, null)).isTrue();
+    assertThat(enablement.isEnabled("demo", 1L, 10L)).isTrue();
+    assertThat(enablement.isVisibleToTenantAdmins("demo", 1L)).isFalse();
+
+    enablement.setGlobal("demo", false, "root");
+    assertThat(enablement.isEnabled("demo", 1L, 10L)).isFalse();
+  }
+
+  @Test
+  void onAppliesAgencyOverrides() {
+    enablement.setMode("demo", 1L, TenantMode.ON, "root");
+    enablement.setForAgency("demo", 1L, 10L, false, "admin");
+    assertThat(enablement.isEnabled("demo", 1L, 10L)).isFalse();
+    assertThat(enablement.isEnabled("demo", 1L, 11L)).isTrue();
+    assertThat(enablement.isVisibleToTenantAdmins("demo", 1L)).isTrue();
+  }
+
+  @Test
+  void inModeTenantTheTraegerSwitchDecidesAndAgencyOverridesApply() {
+    enablement.setMode("demo", 1L, TenantMode.TENANT, "root");
+    assertThat(enablement.isEnabled("demo", 1L, null)).isFalse();
+    assertThat(enablement.isVisibleToTenantAdmins("demo", 1L)).isTrue();
+
+    enablement.setForTenant("demo", 1L, true, "admin");
+    assertThat(enablement.tenantMode("demo", 1L)).isEqualTo(TenantMode.TENANT);
+    assertThat(enablement.isEnabled("demo", 1L, null)).isTrue();
+
+    enablement.setForAgency("demo", 1L, 10L, false, "admin");
+    assertThat(enablement.isEnabled("demo", 1L, 10L)).isFalse();
+  }
+
+  @Test
+  void switchingToTenantKeepsWhetherTheAddonIsOn() {
+    enablement.setMode("demo", 1L, TenantMode.ON, "root");
+    enablement.setMode("demo", 1L, TenantMode.TENANT, "root");
+    assertThat(enablement.isEnabled("demo", 1L, null)).isTrue();
+
+    enablement.setMode("demo", 2L, TenantMode.TENANT, "root");
+    assertThat(enablement.isEnabled("demo", 2L, null)).isFalse();
+  }
+
+  @Test
+  void theTraegerSwitchOfASuperAdminOutsideModeTenantSetsOnOrOff() {
+    enablement.setForTenant("demo", 1L, true, "root");
+    assertThat(enablement.tenantMode("demo", 1L)).isEqualTo(TenantMode.ON);
+    enablement.setForTenant("demo", 1L, false, "root");
+    assertThat(enablement.tenantMode("demo", 1L)).isEqualTo(TenantMode.OFF);
+
+    enablement.setMode("demo", 1L, TenantMode.ON_HIDDEN, "root");
+    enablement.setForTenant("demo", 1L, true, "root");
+    assertThat(enablement.tenantMode("demo", 1L)).isEqualTo(TenantMode.ON_HIDDEN);
+  }
+
+  @Test
+  void traegerRowsWithoutAModeCountAsOnOrOffByTheirFlag() {
+    var on = new AddonEnablement("demo", 1L, null);
+    on.set(true, java.time.Instant.EPOCH, "migration");
+    assertThat(on.getMode()).isEqualTo(TenantMode.ON);
+    var off = new AddonEnablement("demo", 2L, null);
+    off.set(false, java.time.Instant.EPOCH, "migration");
+    assertThat(off.getMode()).isEqualTo(TenantMode.OFF);
+    assertThat(new AddonEnablement("demo", 1L, 10L).getMode()).isNull();
+  }
 }

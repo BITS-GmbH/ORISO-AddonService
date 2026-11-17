@@ -3,11 +3,9 @@ package org.oriso.addonservice.web;
 import java.util.List;
 import java.util.Map;
 import org.oriso.addonservice.registry.AddonClient;
-import org.oriso.addonservice.registry.AddonRegistry;
 import org.oriso.addonservice.registry.RegisteredAddon;
 import org.oriso.addonservice.security.Caller;
 import org.oriso.addonservice.settings.SettingsService;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,19 +15,18 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 /** Settings and statistics of an add-on for the admins of a Träger. */
 @RestController
 @RequestMapping("/addons/admin/addons/{name}")
 public class AdminSettingsController {
 
-  private final AddonRegistry registry;
+  private final AdminAddonAccess access;
   private final SettingsService settings;
   private final AddonClient addons;
 
-  public AdminSettingsController(AddonRegistry registry, SettingsService settings, AddonClient addons) {
-    this.registry = registry;
+  public AdminSettingsController(AdminAddonAccess access, SettingsService settings, AddonClient addons) {
+    this.access = access;
     this.settings = settings;
     this.addons = addons;
   }
@@ -68,10 +65,7 @@ public class AdminSettingsController {
   }
 
   private RegisteredAddon requireAdmin(Jwt jwt, String name, long tenantId) {
-    if (!Caller.from(jwt).isAdminOfTenant(tenantId)) {
-      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not an admin of this Träger");
-    }
-    return registry.find(name).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown add-on"));
+    return access.require(Caller.from(jwt), name, tenantId);
   }
 
   private static Number number(Object value) {

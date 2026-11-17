@@ -5,6 +5,7 @@ import java.net.http.HttpClient;
 import java.time.Clock;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.oriso.addonservice.config.AddonProperties;
@@ -28,6 +29,7 @@ public class AddonDiscovery {
   private static final Logger log = LoggerFactory.getLogger(AddonDiscovery.class);
 
   private final AddonProperties.Discovery properties;
+  private final List<String> readmeHosts;
   private final AddonRegistry registry;
   private final Clock clock;
   private final RestClient manifestClient;
@@ -35,6 +37,7 @@ public class AddonDiscovery {
 
   public AddonDiscovery(AddonProperties properties, AddonRegistry registry, Clock clock) {
     this.properties = properties.discovery();
+    this.readmeHosts = properties.readme().allowedHosts();
     this.registry = registry;
     this.clock = clock;
     var requestFactory =
@@ -80,7 +83,7 @@ public class AddonDiscovery {
       log.warn("Empty manifest at {}", baseUrl);
       return;
     }
-    var problems = ManifestValidator.problems(manifest);
+    var problems = ManifestValidator.problems(manifest, readmeHosts);
     if (!problems.isEmpty()) {
       log.warn("Ignoring add-on at {}: {}", baseUrl, String.join("; ", problems));
       return;

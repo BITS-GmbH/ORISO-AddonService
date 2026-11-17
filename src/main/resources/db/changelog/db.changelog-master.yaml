@@ -297,3 +297,18 @@ databaseChangeLog:
                   name: failed_at
               - column:
                   name: next_attempt_at
+  - changeSet:
+      id: 006-addon-enablement-mode
+      author: addonservice
+      changes:
+        - addColumn:
+            tableName: addon_enablement
+            columns:
+              - column:
+                  name: mode
+                  type: VARCHAR(16)
+        # Träger switches become modes: on stays on without a switch for the Träger, off stays off.
+        - sql:
+            sql: >-
+              UPDATE addon_enablement SET mode = CASE WHEN enabled = TRUE THEN 'ON' ELSE 'OFF' END
+              WHERE agency_id IS NULL

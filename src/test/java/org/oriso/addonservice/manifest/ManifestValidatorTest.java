@@ -14,7 +14,13 @@ class ManifestValidatorTest {
 
   private static AddonManifest withCalendar(
       String name, String contract, String ui, List<AddonManifest.App> apps, String calendar) {
-    return new AddonManifest(name, "1.0.0", contract, "^19", apps, ui, null, null, null, null, "/health", calendar);
+    return new AddonManifest(name, "1.0.0", contract, "^19", apps, ui, null, null, null, null, "/health", calendar, null);
+  }
+
+  private static AddonManifest withReadme(String readme) {
+    return new AddonManifest(
+        "demo", "1.0.0", "oriso-addon/v1", "^19", List.of(app("goals", "asker.navigation")), "/ui/e.js",
+        null, null, null, null, "/health", null, readme);
   }
 
   private static AddonManifest.App app(String id, String... slots) {
@@ -86,5 +92,25 @@ class ManifestValidatorTest {
     var apps = List.of(app("goals", "asker.navigation"));
     assertThat(ManifestValidator.problems(manifest("host", "oriso-addon/v1", "/ui/e.js", apps))).anyMatch(p -> p.contains("reserved"));
     assertThat(ManifestValidator.problems(manifest("calendar", "oriso-addon/v1", "/ui/e.js", apps))).anyMatch(p -> p.contains("reserved"));
+  }
+
+  @Test
+  void acceptsAReadmeOnlyAsHttpsUrlOnAnAllowedHost() {
+    String github = "https://raw.githubusercontent.com/BITS-GmbH/oriso-addon-digisucht-tools/main/docs/README.md";
+    assertThat(ManifestValidator.problems(withReadme(github))).isEmpty();
+    assertThat(ManifestValidator.problems(withReadme(null))).isEmpty();
+    for (String invalid :
+        List.of(
+            "http://raw.githubusercontent.com/a/b/README.md",
+            "https://evil.example/README.md",
+            "https://user@raw.githubusercontent.com/README.md",
+            "https://raw.githubusercontent.com:8443/README.md",
+            "/docs/README.md",
+            "https://raw.githubusercontent.com/a b",
+            "")) {
+      assertThat(ManifestValidator.problems(withReadme(invalid))).as(invalid).anyMatch(p -> p.startsWith("readme"));
+    }
+    assertThat(ManifestValidator.problems(withReadme("https://docs.example/README.md"), List.of("docs.example")))
+        .isEmpty();
   }
 }
