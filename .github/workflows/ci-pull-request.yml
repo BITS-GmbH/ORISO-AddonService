@@ -1,0 +1,30 @@
+name: CI - Pull Request
+
+on:
+  pull_request:
+
+env:
+  REGISTRY: ghcr.io
+  ORG: openresilienceinitiative
+
+jobs:
+  build:
+    name: test, build and Docker validation
+    if: github.repository_owner == 'OpenResilienceInitiative'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
+
+    - name: Compile and Package Java application
+      uses: ./.github/actions/maven-build
+      with:
+        java_version: '21'
+
+    - name: Create Docker image
+      uses: ./.github/actions/docker-build-push
+      with:
+        push_to_ghcr: false
+        image_name: oriso-addonservice
+        github_token: ${{ secrets.GITHUB_TOKEN }}

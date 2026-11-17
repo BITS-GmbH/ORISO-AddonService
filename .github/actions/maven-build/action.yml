@@ -1,0 +1,19 @@
+name: Reusable Maven validation and build steps
+
+inputs:
+  java_version:
+    required: true
+
+runs:
+  using: 'composite'
+  steps:
+  - name: Set up JDK and Maven
+    uses: actions/setup-java@v5
+    with:
+      java-version: ${{ inputs.java_version }}
+      distribution: 'temurin'
+      cache: maven
+
+  - name: Run Maven tests and build
+    shell: bash
+    run: ./mvnw -B verify
