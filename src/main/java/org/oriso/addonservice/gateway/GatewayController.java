@@ -3,7 +3,10 @@ package org.oriso.addonservice.gateway;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import org.oriso.addonservice.registry.AddonRegistry;
 import org.oriso.addonservice.security.Caller;
@@ -24,6 +27,13 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @RestController
 public class GatewayController {
+
+  /** An SVG opened directly must not run script or load anything. */
+  private static final Map<String, String> SVG_HEADERS =
+      Map.of(
+          "Content-Type", "image/svg+xml",
+          "X-Content-Type-Options", "nosniff",
+          "Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'");
 
   private final AddonRegistry registry;
   private final AddonAccess access;
@@ -72,10 +82,15 @@ public class GatewayController {
         registry
             .find(name)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown add-on"));
-    proxy.forward(addon, "/ui", remainder(request, name, "ui"), request, response, Map.of());
+    String remainder = remainder(request, name, "ui");
+    proxy.forward(addon, "/ui", remainder, request, response, Map.of(), -1, isSvg(remainder) ? SVG_HEADERS : Map.of());
   }
 
-  private static String remainder(HttpServletRequest request, String name, String kind) {
+  private static boolean isSvg(String remainder) {
+    return URLDecoder.decode(remainder, StandardCharsets.UTF_8).toLowerCase(Locale.ROOT).endsWith(".svg");
+  }
+
+  static String remainder(HttpServletRequest request, String name, String kind) {
     String uri = request.getRequestURI();
     String marker = "/addons/" + name + "/" + kind;
     int start = uri.indexOf(marker);

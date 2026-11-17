@@ -61,6 +61,7 @@ class SessionAccessTest {
             null,
             null,
             null,
+            null,
             null);
     sessions = new SessionAccess(properties, Clock.systemUTC());
   }

@@ -57,6 +57,7 @@ class AgencyMembershipTest {
             null,
             null,
             null,
+            null,
             null);
     membership = new AgencyMembership(properties, Clock.systemUTC());
   }

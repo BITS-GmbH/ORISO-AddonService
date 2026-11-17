@@ -6,7 +6,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.oriso.addonservice.config.AddonProperties;
 import org.oriso.addonservice.manifest.AddonManifest;
 import org.oriso.addonservice.manifest.Slot;
@@ -38,8 +37,6 @@ public class NotificationService {
 
   private static final Logger log = LoggerFactory.getLogger(NotificationService.class);
   private static final Duration TIMEOUT = Duration.ofSeconds(10);
-  private static final Set<String> SESSION_SLOTS =
-      Set.of(Slot.CONSULTANT_SESSION.id(), Slot.CONSULTANT_ASKER_PROFILE.id());
 
   private final RestClient userService;
   private final String notificationsPath;
@@ -104,7 +101,7 @@ public class NotificationService {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "The recipient cannot open slot '" + slot + "'");
     }
     Long sessionId = null;
-    if (SESSION_SLOTS.contains(slot)) {
+    if (requiresSession(slot)) {
       if (token.sessionId() == null) {
         throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Slot '" + slot + "' needs a session in the token");
       }
@@ -150,7 +147,7 @@ public class NotificationService {
       payload.put("addon", addon.name());
       payload.put("appId", app.id());
       payload.put("slot", slot);
-      payload.put("sessionId", SESSION_SLOTS.contains(slot) ? counsellor.sessionId() : null);
+      payload.put("sessionId", requiresSession(slot) ? counsellor.sessionId() : null);
       payload.put("important", Boolean.TRUE.equals(request.important()));
       payload.put("title", request.title());
       payload.put("text", request.text());
@@ -164,6 +161,10 @@ public class NotificationService {
     return addon
         .app(appId)
         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown app '" + appId + "'"));
+  }
+
+  private static boolean requiresSession(String slot) {
+    return Slot.fromId(slot).map(Slot::requiresSession).orElse(false);
   }
 
   private static String recipient(HostToken token, String recipient) {

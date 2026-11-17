@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
+import org.oriso.addonservice.config.AddonProperties;
 import org.oriso.addonservice.enablement.AddonEnablement;
 import org.oriso.addonservice.enablement.EnablementService;
 import org.oriso.addonservice.enablement.TenantMode;
@@ -47,13 +48,19 @@ public class AdminController {
   private final EnablementService enablement;
   private final AdminAddonAccess access;
   private final ReadmeService readmes;
+  private final String publicPath;
 
   public AdminController(
-      AddonRegistry registry, EnablementService enablement, AdminAddonAccess access, ReadmeService readmes) {
+      AddonRegistry registry,
+      EnablementService enablement,
+      AdminAddonAccess access,
+      ReadmeService readmes,
+      AddonProperties properties) {
     this.registry = registry;
     this.enablement = enablement;
     this.access = access;
     this.readmes = readmes;
+    this.publicPath = properties.publicPath();
   }
 
   @GetMapping
@@ -173,7 +180,7 @@ public class AdminController {
             .map(row -> new GlobalSwitch(row.isEnabled(), row.getUpdatedAt(), row.getUpdatedBy()))
             .orElse(new GlobalSwitch(false, null, null));
     return new AdminAddon(
-        addon.manifest(),
+        addon.manifest().withPublicIcons(publicPath),
         addon.source(),
         addon.discoveredAt(),
         global,

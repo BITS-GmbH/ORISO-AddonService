@@ -164,4 +164,54 @@ class ManifestValidatorTest {
     assertThat(ManifestValidator.problems(withScreenshots(shot, shot, shot, shot, shot, shot, shot)))
         .anyMatch(p -> p.contains("more than 6 screenshots"));
   }
+
+  @Test
+  void acceptsTheSessionMenusAndOneAgencyFinderPerAddon() {
+    var apps =
+        List.of(
+            app("menu", "asker.session-menu", "consultant.session-menu"),
+            app("finder", "registration.agency-finder", "asker.navigation"));
+    assertThat(ManifestValidator.problems(manifest("demo", "oriso-addon/v1", "/ui/e.js", apps))).isEmpty();
+
+    var twoFinders = List.of(app("a", "registration.agency-finder"), app("b", "registration.agency-finder"));
+    assertThat(ManifestValidator.problems(manifest("demo", "oriso-addon/v1", "/ui/e.js", twoFinders)))
+        .containsExactly("only one app may use slot 'registration.agency-finder'");
+  }
+
+  @Test
+  void reservesThePublicName() {
+    var apps = List.of(app("goals", "asker.navigation"));
+    assertThat(ManifestValidator.problems(manifest("public", "oriso-addon/v1", "/ui/e.js", apps)))
+        .anyMatch(p -> p.contains("reserved"));
+  }
+
+  private static AddonManifest withIcon(String icon) {
+    var app = new AddonManifest.App("goals", Map.of("de", "Ziele"), List.of("asker.navigation"), null, null, icon);
+    return manifest("demo", "oriso-addon/v1", "/ui/e.js", List.of(app));
+  }
+
+  @Test
+  void acceptsAnSvgIconBelowUi() {
+    assertThat(ManifestValidator.problems(withIcon(null))).isEmpty();
+    assertThat(ManifestValidator.problems(withIcon("/ui/icons/goals.svg"))).isEmpty();
+    for (String invalid :
+        List.of(
+            "/ui/icons/goals.png",
+            "/icons/goals.svg",
+            "/ui/../api/goals.svg",
+            "/ui/icons/..svg",
+            "/ui//goals.svg",
+            "https://evil.example/ui/goals.svg",
+            "/ui/goals.svg?x=1",
+            "/ui/" + "a".repeat(200) + ".svg",
+            "")) {
+      assertThat(ManifestValidator.problems(withIcon(invalid))).as(invalid).anyMatch(p -> p.contains("icon"));
+    }
+  }
+
+  @Test
+  void exposesIconsBelowThePublicPath() {
+    var manifest = withIcon("/ui/icons/goals.svg").withPublicIcons("/service/addons");
+    assertThat(manifest.apps().getFirst().icon()).isEqualTo("/service/addons/demo/ui/icons/goals.svg");
+  }
 }

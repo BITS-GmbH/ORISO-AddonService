@@ -12,12 +12,14 @@ import java.security.interfaces.RSAPublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.RSAPublicKeySpec;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import org.oriso.addonservice.config.AddonProperties;
 import org.oriso.addonservice.security.Caller;
+import org.oriso.addonservice.security.Role;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
@@ -40,12 +42,14 @@ public class AddonTokenIssuer {
   private static final Logger log = LoggerFactory.getLogger(AddonTokenIssuer.class);
 
   private final AddonProperties.Token properties;
+  private final Duration anonymousTtl;
   private final Clock clock;
   private final RSAKey key;
   private final NimbusJwtEncoder encoder;
 
   public AddonTokenIssuer(AddonProperties properties, Clock clock) {
     this.properties = properties.token();
+    this.anonymousTtl = properties.publicGateway().tokenTtl();
     this.clock = clock;
     this.key = loadOrGenerate(this.properties.privateKeyPem());
     this.encoder = new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(key)));
@@ -81,6 +85,20 @@ public class AddonTokenIssuer {
   /** Token for the AddonService's own calls to an add-on, scoped to one Träger. */
   public String issueForService(String addon, long tenantId) {
     return sign(baseClaims(addon, "addonservice").claim("roles", List.of(SERVICE_ROLE)).claim("tenantId", tenantId));
+  }
+
+  /** Token for a visitor without an account during registration: no subject, no user claims. */
+  public String issueAnonymous(String addon, long tenantId) {
+    Instant now = clock.instant();
+    var claims =
+        JwtClaimsSet.builder()
+            .issuer(properties.issuer())
+            .audience(List.of(addon))
+            .issuedAt(now)
+            .expiresAt(now.plus(anonymousTtl))
+            .claim("roles", List.of(Role.ANONYMOUS))
+            .claim("tenantId", tenantId);
+    return sign(claims);
   }
 
   public JwtDecoder decoder() {

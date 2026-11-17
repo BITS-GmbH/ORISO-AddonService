@@ -14,9 +14,11 @@ public final class ManifestValidator {
   private static final Pattern NAME = Pattern.compile("^[a-z][a-z0-9-]{1,40}$");
   private static final Pattern APP_ID = Pattern.compile("^[a-z][a-z0-9-]{0,40}$");
   private static final Pattern PATH = Pattern.compile("^(/[A-Za-z0-9._-]+)+$");
+  private static final Pattern ICON = Pattern.compile("^/ui(/[A-Za-z0-9._-]+)+\\.svg$");
+  private static final int MAX_ICON_LENGTH = 200;
 
   /** Names that would collide with the AddonService's own routes under the public path. */
-  private static final Set<String> RESERVED = Set.of("registry", "admin", "well-known", "host", "calendar");
+  private static final Set<String> RESERVED = Set.of("registry", "admin", "well-known", "host", "calendar", "public");
 
   public static final int MAX_SCREENSHOTS_PER_APP = 6;
 
@@ -74,7 +76,16 @@ public final class ManifestValidator {
           problems.add("app '" + app.id() + "' uses unknown slot '" + slot + "'");
         }
       }
+      if (app.icon() != null
+          && (app.icon().length() > MAX_ICON_LENGTH || !ICON.matcher(app.icon()).matches() || app.icon().contains(".."))) {
+        problems.add("app '" + app.id() + "' icon must be an .svg path below /ui/ of at most " + MAX_ICON_LENGTH + " characters");
+      }
       screenshotProblems(app, readmeHosts, problems);
+    }
+    long agencyFinders =
+        manifest.apps().stream().filter(app -> app.slots().contains(Slot.REGISTRATION_AGENCY_FINDER.id())).count();
+    if (agencyFinders > 1) {
+      problems.add("only one app may use slot '" + Slot.REGISTRATION_AGENCY_FINDER.id() + "'");
     }
     return problems;
   }

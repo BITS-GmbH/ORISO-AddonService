@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.oriso.addonservice.discovery.AddonDiscovery;
 import org.oriso.addonservice.enablement.AddonEnablementRepository;
 import org.oriso.addonservice.enablement.EnablementService;
+import org.oriso.addonservice.host.ContextService;
 import org.oriso.addonservice.security.AgencyMembership;
 import org.oriso.addonservice.security.Caller;
 import org.oriso.addonservice.security.SessionAccess;
@@ -58,6 +59,7 @@ class SessionSettingsStatsIntegrationTest {
   @Autowired AddonTokenIssuer issuer;
   @MockitoBean AgencyMembership membership;
   @MockitoBean SessionAccess sessions;
+  @MockitoBean ContextService contexts;
 
   @DynamicPropertySource
   static void addons(DynamicPropertyRegistry registry) {
@@ -101,6 +103,7 @@ class SessionSettingsStatsIntegrationTest {
     Jwt token = decode(ADDON.lastRequest.get("header:authorization"));
     assertThat(((Number) token.getClaim("sessionId")).longValue()).isEqualTo(42L);
     assertThat(token.getClaimAsString("askerId")).isEqualTo("asker-7");
+    assertThat(((Number) token.getClaim("agencyId")).longValue()).isEqualTo(10L);
   }
 
   @Test
@@ -111,11 +114,20 @@ class SessionSettingsStatsIntegrationTest {
   }
 
   @Test
-  void ignoresTheSessionHeaderOfClients() throws Exception {
+  void checksTheSessionHeaderOfClientsAgainstTheirOwnSessions() throws Exception {
+    when(contexts.ownSession("user-1", 1L, 42L)).thenReturn(Optional.of(new ContextService.OwnSession(42L, 10L)));
+    when(contexts.ownSession("user-1", 1L, 43L)).thenReturn(Optional.empty());
+
     mvc.perform(get("/addons/demo/api/entries").with(user(1, "user")).header("X-Oriso-Session-Id", "42"))
         .andExpect(status().isCreated());
     verify(sessions, never()).find(any(), anyLong());
-    assertThat(decode(ADDON.lastRequest.get("header:authorization")).hasClaim("askerId")).isFalse();
+    Jwt token = decode(ADDON.lastRequest.get("header:authorization"));
+    assertThat(((Number) token.getClaim("sessionId")).longValue()).isEqualTo(42L);
+    assertThat(((Number) token.getClaim("agencyId")).longValue()).isEqualTo(10L);
+    assertThat(token.hasClaim("askerId")).isFalse();
+
+    mvc.perform(get("/addons/demo/api/entries").with(user(1, "user")).header("X-Oriso-Session-Id", "43"))
+        .andExpect(status().isForbidden());
   }
 
   @Test

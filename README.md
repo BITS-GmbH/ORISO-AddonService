@@ -10,7 +10,9 @@ discovered by the platform and enabled per Träger. Design: ADR-031 (draft,
 |---|---|---|
 | `GET /registry` | logged-in users | Add-ons enabled in the request's context (see below), with only the apps whose slots the caller's role may see and the dynamic apps the add-on reports as visible |
 | `/{name}/api/**` | logged-in users | Forwarded to the add-on's `/api/**` with a short-lived token signed by the AddonService instead of the Keycloak token |
-| `GET /{name}/ui/**` | anyone | The add-on's bundle and assets (loaded with `import()`, which cannot send a token) |
+| `GET /{name}/ui/**` | anyone | The add-on's bundle and assets (loaded with `import()`, which cannot send a token); SVGs with a CSP that blocks script |
+| `GET /public/registration?tenantId=` | anyone | The add-on that takes over the agency selection of the registration for that Träger, or 204 (see Registration) |
+| `/{name}/public/api/**` | anyone, with `X-Oriso-Tenant-Id` | Forwarded to the add-on's `/public/api/**` with an anonymous token, rate limited (see Registration) |
 | `GET /.well-known/jwks.json` | anyone | Public key add-ons use to verify the token |
 | `GET /admin/addons?tenantId=` | admins of the Träger | Add-ons with their switches: all for a SuperAdmin, for the admins of a Träger only those on globally in mode `TENANT` or `ON`. Each has `manifest`, `source`, `discoveredAt`, `global`, `tenantId`, `enabled` (Träger level on), `mode`, `tenantCanSwitch`, `hasReadme`, `agencyOverrides` |
 | `GET /admin/addons/{name}/tenants` | SuperAdmin | Every Träger with a switch or agency overrides for the add-on: `enabled`, `mode`, `updatedAt`, `updatedBy`, `agenciesEnabled`, `agenciesDisabled` |
@@ -54,10 +56,12 @@ applies the agency override and passes `agencyId` in the add-on token. A counsel
 are `agencies[].id` of `/users/data`; a client's are `sessions[].agencyId` and
 `consultingTypes.*.agency.id` (UserService 2.0.15 sends no `agencies` list for clients).
 
-**Session context:** when a counsellor's request carries `X-Oriso-Session-Id`, the AddonService
-asks UserService (`/users/consultants/sessions/{id}`, with the counsellor's token) whether the
-counsellor may see the session, and passes `sessionId` and the client's `askerId` in the add-on
-token. Without access the request gets 403. Clients' session headers are ignored.
+**Session context:** when a request carries `X-Oriso-Session-Id`, the AddonService checks it. For
+a counsellor it asks UserService (`/users/consultants/sessions/{id}`, with the counsellor's token)
+whether the counsellor may see the session and passes `sessionId` and the client's `askerId` in
+the add-on token; for a client the session must be one of their own in their Träger
+(`/users/addon-context`, technical client) and `sessionId` is passed. Either way the session's
+agency decides enablement and is passed as `agencyId`. Without access the request gets 403.
 
 **Token for add-ons** (RS256, audience = add-on name, 2 minutes): `sub`, `username`, `roles`,
 `tenantId`, `agencyId`, `sessionId` and `askerId` (if any). Cookies, the Keycloak token and
@@ -74,7 +78,25 @@ client addresses are never forwarded. Add-on backends send this token to `/host/
 - `GET /visibility`: needed when an app declares `"visibility": "dynamic"`, see Registry.
 
 The full contract for notifications, audit entries and calendar entries is in
-[docs/contract-v1-notifications-audit-calendar.md](docs/contract-v1-notifications-audit-calendar.md).
+[docs/contract-v1-notifications-audit-calendar.md](docs/contract-v1-notifications-audit-calendar.md);
+the registration slot, session menus, app icons and the events `user.registered` and
+`session.interaction` are in
+[docs/contract-v1-registration-and-events.md](docs/contract-v1-registration-and-events.md).
+
+## Registration
+
+An app in slot `registration.agency-finder` (at most one per add-on) can replace the agency
+selection of the core registration for visitors without an account. `GET /public/registration?tenantId=`
+answers with the add-on enabled for that Träger at Träger level (global switch, mode `TENANT` with
+the Träger switch on, `ON` or `ON_HIDDEN`; the first by name if several, with a warning), or 204.
+Its app calls `complete({agencyId, topicId, postcode, consultingType, registrationRef})`; UserService
+later publishes `user.registered` with the new user id and the ref.
+
+`/{name}/public/api/**` needs `X-Oriso-Tenant-Id` (400 without) and is allowed only for an add-on
+offering that slot for the Träger (403). It is rate limited per client address (first hop of
+`X-Forwarded-For`) and add-on (429) and limits the body (413). The add-on gets an anonymous token:
+`aud` = add-on, `tenantId`, `roles: ["anonymous"]`, no `sub` or user claims, short TTL. With it,
+the host API serves only `/host/settings` and `/host/gates`.
 
 ## Registry
 
@@ -125,7 +147,7 @@ token and cache the answers briefly (`addons.tenant-service.cache-ttl`, `addons.
 
 With `ADDONS_LIFECYCLE_ENABLED=true` and `SPRING_RABBITMQ_*` set, the AddonService binds a durable
 queue (`addons.lifecycle.queue`, default `addonservice.lifecycle`) to the core's topic exchange
-`oriso.lifecycle` for `user.deleted` and `session.deleted`. Each event is stored once per add-on
+`oriso.lifecycle` for `user.deleted`, `session.deleted`, `user.registered` and `session.interaction`. Each event is stored once per add-on
 that lists its type in the manifest's `events` (table `addon_event_delivery`) and delivered as
 `POST <add-on>/events` with a service token (role `addon-service`, the event's `tenantId`). A 2xx
 answer ends it; otherwise it is retried with growing pauses (30 s doubling, at most 6 h) and given up
@@ -134,7 +156,12 @@ with an error log after 7 days. Handlers must be idempotent and accept unknown i
 ```json
 {"id":"…","type":"user.deleted","occurredAt":"…","tenantId":1,"userId":"…","role":"asker"}
 {"id":"…","type":"session.deleted","occurredAt":"…","tenantId":1,"sessionId":16,"askerId":"…","agencyId":0}
+{"id":"…","type":"user.registered","occurredAt":"…","tenantId":1,"userId":"…","registrationRef":"…"}
+{"id":"…","type":"session.interaction","occurredAt":"…","tenantId":1,"sessionId":16,"agencyId":10,"consultantId":"…","interaction":"message|call|video_call|appointment"}
 ```
+
+For `user.registered` and `session.interaction` only these fields are forwarded; events without
+`userId`, without `sessionId` or with another `interaction` are dropped.
 
 **`POST /host/audit`**: `action` matches `[a-z0-9._-]{1,64}`, `summary` is plain text per locale
 (`de` required, max 300), `subject` is `self`, `asker` (403 without `askerId` in the token) or
@@ -184,7 +211,7 @@ Each add-on serves `/.well-known/oriso-addon.json`. Invalid manifests are logged
   "calendar": "/calendar",
   "readme": "https://raw.githubusercontent.com/BITS-GmbH/oriso-addon-digisucht-tools/main/docs/README.md",
   "apps": [
-    { "id": "goals", "title": { "de": "Ausgangssituation und Ziele" },
+    { "id": "goals", "title": { "de": "Ausgangssituation und Ziele" }, "icon": "/ui/icons/goals.svg",
       "slots": ["asker.navigation", "consultant.session", "consultant.asker-profile"],
       "visibility": "dynamic",
       "screenshots": [
@@ -208,6 +235,10 @@ passes the Markdown on unrendered; the admin UI sanitizes it.
 `addons.readme.allowed-hosts` like `readme`, `caption` an optional localized text. Otherwise the
 manifest is invalid. The browser of the admin loads the images directly from that host.
 
+`icon` (optional, per app) is a monochrome SVG below `/ui/` (ending in `.svg`, no `..`, at most
+200 characters), served by the add-on and exposed in the registry and admin output as
+`/service/addons/<name>/ui/icons/goals.svg`.
+
 `visibility` is `static` (default: the app is shown wherever its slot and the enablement allow)
 or `dynamic` (the add-on decides per user, see Registry).
 
@@ -216,8 +247,11 @@ Slots and who sees them:
 | Slot | Roles |
 |---|---|
 | `asker.navigation` | `user` |
-| `consultant.navigation`, `consultant.session`, `consultant.asker-profile` | `consultant` |
+| `asker.session-menu` | `user`, with a verified own session |
+| `consultant.navigation` | `consultant` |
+| `consultant.session`, `consultant.session-menu`, `consultant.asker-profile` | `consultant`, with a verified session |
 | `admin.page` | `tenant-admin`, `single-tenant-admin`, `agency-admin`, `restricted-agency-admin` |
+| `registration.agency-finder` | visitors without an account (never in `/registry`) |
 
 ## Configuration
 
@@ -236,6 +270,10 @@ Slots and who sees them:
 | `ADDONS_VISIBILITY_CACHETTL` | `30s` | Cache of `GET /visibility` answers per user, add-on and context |
 | `ADDONS_README_ALLOWEDHOSTS` | `raw.githubusercontent.com` | Comma-separated hosts a manifest `readme` and app `screenshots` may point to |
 | `ADDONS_README_TIMEOUT` / `_MAXSIZE` / `_CACHETTL` | `5s` / `512KB` / `10m` | Fetching the README |
+| `ADDONS_PUBLICGATEWAY_REQUESTSPERMINUTE` | `60` | Public API requests per client address and add-on |
+| `ADDONS_PUBLICGATEWAY_TOKENTTL` | `1m` | Lifetime of the anonymous add-on token |
+| `ADDONS_PUBLICGATEWAY_MAXBODYSIZE` | `1MB` | Request body of the public API |
+| `ADDONS_PUBLICGATEWAY_CACHETTL` | `30s` | Cache of the registration add-on per Träger |
 
 ## Demo add-on
 

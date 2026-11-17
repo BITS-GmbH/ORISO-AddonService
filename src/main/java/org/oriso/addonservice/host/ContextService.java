@@ -8,6 +8,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import org.oriso.addonservice.config.AddonProperties;
 import org.oriso.addonservice.security.Role;
@@ -81,6 +82,23 @@ public class ContextService {
     return counsellors;
   }
 
+  /** One of the client's own sessions within the Träger, or empty when it is not theirs. */
+  public Optional<OwnSession> ownSession(String userId, long tenantId, long sessionId) {
+    Map<String, Object> context;
+    try {
+      context = read(userId, tenantId);
+    } catch (ResponseStatusException e) {
+      if (e.getStatusCode().value() == HttpStatus.NOT_FOUND.value()) {
+        return Optional.empty();
+      }
+      throw e;
+    }
+    return maps(context.get("sessions")).stream()
+        .filter(session -> Objects.equals(number(session.get("id")), sessionId))
+        .findFirst()
+        .map(session -> new OwnSession(sessionId, number(session.get("agencyId"))));
+  }
+
   private static String subjectId(HostToken token, String subject) {
     String effective = subject == null || subject.isBlank() ? (token.askerId() != null ? ASKER : SELF) : subject;
     if (SELF.equals(effective)) {
@@ -152,6 +170,8 @@ public class ContextService {
   }
 
   public record Counsellor(String userId, long sessionId) {}
+
+  public record OwnSession(long sessionId, Long agencyId) {}
 
   private record Cached(Map<String, Object> context, Instant until) {}
 }

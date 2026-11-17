@@ -10,5 +10,8 @@ public final class Role {
   public static final String AGENCY_ADMIN = "agency-admin";
   public static final String RESTRICTED_AGENCY_ADMIN = "restricted-agency-admin";
 
+  /** Role in add-on tokens for visitors without an account, during registration. */
+  public static final String ANONYMOUS = "anonymous";
+
   private Role() {}
 }

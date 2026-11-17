@@ -41,6 +41,7 @@ class HostContextIntegrationTest {
   @Autowired AddonTokenIssuer issuer;
   @Autowired TechnicalClientToken technicalToken;
   @Autowired JsonMapper json;
+  @Autowired org.oriso.addonservice.enablement.EnablementService enablement;
   @MockitoBean AgencyMembership membership;
   @MockitoBean SessionAccess sessions;
 
@@ -209,5 +210,36 @@ class HostContextIntegrationTest {
                     """))
         .andExpect(status().isBadRequest());
     assertThat(CORE.notifications).isEmpty();
+  }
+
+  @Test
+  void aClientsSessionHeaderMustNameOneOfTheirOwnSessions() throws Exception {
+    enablement.setGlobal("demo", true, "test");
+    enablement.setForTenant("demo", 1L, true, "test");
+    var client =
+        org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt()
+            .jwt(j -> j.subject("asker-7").claim("tenantId", 1).claim("realm_access", java.util.Map.of("roles", java.util.List.of("user"))));
+
+    mvc.perform(get("/addons/demo/api/echo").with(client).header("X-Oriso-Session-Id", "42"))
+        .andExpect(status().isCreated());
+    assertThat(CORE.lastContextRequest.get("uri")).contains("userId=asker-7").contains("tenantId=1");
+    var token =
+        issuer.decoder().decode(ADDON.lastRequest.get("header:authorization").substring("Bearer ".length()));
+    assertThat(((Number) token.getClaim("sessionId")).longValue()).isEqualTo(42L);
+    assertThat(((Number) token.getClaim("agencyId")).longValue()).isEqualTo(10L);
+    assertThat(token.getClaims()).doesNotContainKey("askerId");
+
+    mvc.perform(get("/addons/registry").with(client).header("X-Oriso-Session-Id", "42"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.addons[0].apps[0].slots[1]").value("asker.session-menu"));
+
+    mvc.perform(get("/addons/demo/api/echo").with(client).header("X-Oriso-Session-Id", "99"))
+        .andExpect(status().isForbidden());
+    mvc.perform(get("/addons/registry").with(client).header("X-Oriso-Session-Id", "99"))
+        .andExpect(status().isForbidden());
+
+    CORE.contextStatus = 404;
+    mvc.perform(get("/addons/demo/api/echo").with(client).header("X-Oriso-Session-Id", "42"))
+        .andExpect(status().isForbidden());
   }
 }

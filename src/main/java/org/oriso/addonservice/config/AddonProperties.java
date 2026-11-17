@@ -19,7 +19,8 @@ public record AddonProperties(
     @DefaultValue Calendar calendar,
     @DefaultValue Visibility visibility,
     @DefaultValue Lifecycle lifecycle,
-    @DefaultValue Readme readme) {
+    @DefaultValue Readme readme,
+    @DefaultValue PublicGateway publicGateway) {
 
   public record Discovery(
       @DefaultValue("false") boolean kubernetes,
@@ -93,6 +94,16 @@ public record AddonProperties(
       @DefaultValue("5s") Duration timeout,
       @DefaultValue("512KB") DataSize maxSize,
       @DefaultValue("10m") Duration cacheTtl) {}
+
+  /**
+   * Anonymous access during registration: {@code GET /addons/public/registration} and
+   * {@code /addons/<name>/public/api/**}.
+   */
+  public record PublicGateway(
+      @DefaultValue("60") int requestsPerMinute,
+      @DefaultValue("1m") Duration tokenTtl,
+      @DefaultValue("1MB") DataSize maxBodySize,
+      @DefaultValue("30s") Duration cacheTtl) {}
 
   public record Visibility(
       @DefaultValue("2s") Duration timeout,

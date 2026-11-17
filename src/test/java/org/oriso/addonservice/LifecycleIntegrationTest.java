@@ -29,6 +29,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 class LifecycleIntegrationTest {
 
   private static final FakeAddon ADDON = start(() -> new FakeAddon());
+  private static final FakeAddon FINDER = start(() -> new FakeAddon("finder", FakeAddon.AGENCY_FINDER_MANIFEST));
   /** Starts at real time: the add-on side validates the service token against the real clock. */
   private static final Instant START = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
   private static final MutableClock CLOCK = new MutableClock(START);
@@ -38,6 +39,7 @@ class LifecycleIntegrationTest {
   @Autowired EventDispatcher dispatcher;
   @Autowired EventDeliveryRepository deliveries;
   @Autowired AddonTokenIssuer issuer;
+  @Autowired tools.jackson.databind.json.JsonMapper json;
 
   @TestConfiguration
   static class Clocks {
@@ -50,13 +52,14 @@ class LifecycleIntegrationTest {
 
   @DynamicPropertySource
   static void properties(DynamicPropertyRegistry registry) {
-    registry.add("addons.discovery.static-addons", () -> ADDON.baseUrl().toString());
+    registry.add("addons.discovery.static-addons", () -> ADDON.baseUrl() + "," + FINDER.baseUrl());
     registry.add("spring.main.allow-bean-definition-overriding", () -> "true");
   }
 
   @AfterAll
   static void stop() {
     ADDON.close();
+    FINDER.close();
   }
 
   private interface Starter<T> {
@@ -76,6 +79,7 @@ class LifecycleIntegrationTest {
     deliveries.deleteAll();
     discovery.refresh();
     ADDON.events.clear();
+    FINDER.events.clear();
     ADDON.eventStatus = 204;
     CLOCK.set(START);
   }
@@ -141,6 +145,54 @@ class LifecycleIntegrationTest {
     assertThat(failed.getFailedAt()).isNotNull();
     CLOCK.advance(Duration.ofDays(1));
     assertThat(dispatcher.dispatch()).isZero();
+  }
+
+  @Test
+  void forwardsUserRegisteredWithOnlyTheContractFields() throws Exception {
+    String registered =
+        """
+        {"id":"ev-r","type":"user.registered","occurredAt":"2026-11-17T10:00:00Z","tenantId":1,
+         "userId":"asker-9","registrationRef":"ref-123","email":"a@b.de","username":"secret"}
+        """;
+    assertThat(events.accept(registered)).isEqualTo(1);
+    assertThat(dispatcher.dispatch()).isEqualTo(1);
+    assertThat(ADDON.events).isEmpty();
+    assertThat(FINDER.events).singleElement().satisfies(request -> {
+      assertThat(json.readTree(request.get("body")))
+          .isEqualTo(
+              json.readTree(
+                  """
+                  {"id":"ev-r","type":"user.registered","occurredAt":"2026-11-17T10:00:00Z","tenantId":1,
+                   "userId":"asker-9","registrationRef":"ref-123"}
+                  """));
+      Jwt jwt = issuer.decoder().decode(request.get("authorization").substring("Bearer ".length()));
+      assertThat(jwt.getAudience()).containsExactly("finder");
+      assertThat(jwt.getClaimAsStringList("roles")).containsExactly(AddonTokenIssuer.SERVICE_ROLE);
+    });
+
+    assertThat(events.accept("{\"id\":\"ev-r2\",\"type\":\"user.registered\",\"tenantId\":1}")).isZero();
+  }
+
+  @Test
+  void forwardsSessionInteractionsWithoutContent() throws Exception {
+    String interaction =
+        """
+        {"id":"ev-i","type":"session.interaction","occurredAt":"2026-11-17T10:00:00Z","tenantId":1,
+         "sessionId":16,"agencyId":10,"consultantId":"consultant-1","interaction":"video_call","message":"Hallo"}
+        """;
+    assertThat(events.accept(interaction)).isEqualTo(1);
+    assertThat(dispatcher.dispatch()).isEqualTo(1);
+    assertThat(FINDER.events).singleElement().satisfies(request ->
+        assertThat(json.readTree(request.get("body")))
+            .isEqualTo(
+                json.readTree(
+                    """
+                    {"id":"ev-i","type":"session.interaction","occurredAt":"2026-11-17T10:00:00Z","tenantId":1,
+                     "sessionId":16,"agencyId":10,"consultantId":"consultant-1","interaction":"video_call"}
+                    """)));
+
+    assertThat(events.accept(interaction.replace("ev-i", "ev-j").replace("video_call", "chat"))).isZero();
+    assertThat(events.accept(interaction.replace("ev-i", "ev-k").replace("\"sessionId\":16,", ""))).isZero();
   }
 
   /** A clock the test moves. */

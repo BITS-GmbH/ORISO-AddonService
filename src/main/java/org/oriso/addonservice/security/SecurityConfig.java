@@ -25,8 +25,22 @@ public class SecurityConfig {
     return http.build();
   }
 
+  /**
+   * The registration, for visitors without an account. No resource server here, so an
+   * Authorization header the browser may send is ignored instead of rejected.
+   */
   @Bean
   @Order(2)
+  SecurityFilterChain publicRegistration(HttpSecurity http) throws Exception {
+    http.securityMatcher("/addons/public/registration", "/addons/*/public/api/**")
+        .csrf(csrf -> csrf.disable())
+        .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+        .authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll());
+    return http.build();
+  }
+
+  @Bean
+  @Order(3)
   SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
     // Only bearer tokens in the Authorization header are accepted, never cookies,
     // so the double-submit CSRF check of the other services is not needed here.

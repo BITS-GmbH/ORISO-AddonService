@@ -31,7 +31,7 @@ The add-on token is the short-lived RS256 token the AddonService issues per requ
 - `recipient`: `"self"` (the token's `sub`) or `"asker"` (the token's `askerId`, only present when a counsellor acts in a session they may access). Nothing else in v1, so an add-on can never address arbitrary users.
 - `title`, `text`: per locale; `de` is required, the core falls back to `de`. Plain text, max 120 / 500 characters.
 - `important`: the only delivery hint. The core decides channels from the recipient's own notification preferences.
-- `appId`, `target.slot`: where a click leads. `target.slot` must be one of the app's slots that the recipient can open (`asker` counts as role `user`). The AddonService adds `addon` (its name) and, for `consultant.session` and `consultant.asker-profile`, the `sessionId` from the token (400 if the token has none).
+- `appId`, `target.slot`: where a click leads. `target.slot` must be one of the app's slots that the recipient can open (`asker` counts as role `user`). The AddonService adds `addon` (its name) and, for the session slots (`consultant.session`, `consultant.session-menu`, `consultant.asker-profile`, `asker.session-menu`), the `sessionId` from the token (400 if the token has none).
 - Response `202` with `{ "id": "<notification id>" }`; `403` if the recipient is not allowed; `404` for an unknown app; `400` for an invalid body; `502` if UserService or Keycloak fails.
 
 AddonService forwards to UserService:
@@ -107,7 +107,7 @@ What a user sees is decided in three stages, all in the AddonService (ADR-032 se
 `GET /addons/registry` (user token) accepts the same optional headers as the gateway:
 
 - `X-Oriso-Agency-Id`: verified membership (as in the gateway); the Träger switch and the override of this agency decide.
-- `X-Oriso-Session-Id`: counsellors only; verified with UserService as in the gateway; the session's agency decides, and the session context goes into the token used for the visibility call.
+- `X-Oriso-Session-Id`: verified as in the gateway (counsellors: UserService allows them to see the session; clients: it is one of their own sessions in their Träger, from `/users/addon-context`); the session's agency decides, and the session context goes into the token used for the visibility call.
 - No header: the caller's own agencies (counsellor: their agencies; client: the agencies of their sessions, from `/users/data`). An add-on is listed if it is enabled for at least one of them; if the caller has no agency at all, the Träger switch alone decides.
 
 The web app fetches the registry once without context (navigation, profile-independent places) and once per open case with that case's agency and session (case view, profile tiles). A disabled add-on is therefore absent from the response and the UI renders nothing for it.

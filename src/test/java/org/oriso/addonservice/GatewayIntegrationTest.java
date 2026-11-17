@@ -150,6 +150,17 @@ class GatewayIntegrationTest {
   }
 
   @Test
+  void servesSvgIconsSoTheyCannotRunScript() throws Exception {
+    mvc.perform(get("/addons/demo/ui/icons/page.svg"))
+        .andExpect(status().isOk())
+        .andExpect(header().string("Content-Type", "image/svg+xml"))
+        .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+        .andExpect(header().string("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'"));
+    mvc.perform(get("/addons/demo/ui/entry.js"))
+        .andExpect(header().doesNotExist("Content-Security-Policy"));
+  }
+
+  @Test
   void rejectsPathTraversal() throws Exception {
     mvc.perform(get("/addons/demo/ui/%2e%2e/api/echo")).andExpect(status().isBadRequest());
   }
@@ -168,11 +179,15 @@ class GatewayIntegrationTest {
         .andExpect(jsonPath("$.addons[0].apiBase").value("/service/addons/demo/api"))
         .andExpect(jsonPath("$.addons[0].apps.length()").value(1))
         .andExpect(jsonPath("$.addons[0].apps[0].id").value("case-panel"))
-        .andExpect(jsonPath("$.addons[0].apps[0].slots.length()").value(2));
+        .andExpect(jsonPath("$.addons[0].apps[0].slots.length()").value(3))
+        .andExpect(jsonPath("$.addons[0].apps[0].slots[2]").value("consultant.session-menu"))
+        .andExpect(jsonPath("$.addons[0].apps[0].icon").doesNotExist());
 
     mvc.perform(get("/addons/registry").with(user(1, "user")))
         .andExpect(jsonPath("$.addons[0].apps.length()").value(1))
-        .andExpect(jsonPath("$.addons[0].apps[0].id").value("client-page"));
+        .andExpect(jsonPath("$.addons[0].apps[0].id").value("client-page"))
+        .andExpect(jsonPath("$.addons[0].apps[0].slots[1]").value("asker.session-menu"))
+        .andExpect(jsonPath("$.addons[0].apps[0].icon").value("/service/addons/demo/ui/icons/page.svg"));
 
     mvc.perform(get("/addons/registry").with(user(2, "user"))).andExpect(jsonPath("$.addons").isEmpty());
   }
@@ -213,6 +228,7 @@ class GatewayIntegrationTest {
         .andExpect(jsonPath("$[0].hasReadme").value(false))
         .andExpect(jsonPath("$[0].manifest.apps[0].screenshots[0].slot").value("asker.navigation"))
         .andExpect(jsonPath("$[0].manifest.apps[0].screenshots[0].caption.en").value("Page"))
+        .andExpect(jsonPath("$[0].manifest.apps[0].icon").value("/service/addons/demo/ui/icons/page.svg"))
         .andExpect(jsonPath("$[0].agencyOverrides[0].agencyId").value(10));
 
     mvc.perform(get("/addons/admin/addons").with(user(1, "consultant"))).andExpect(status().isForbidden());

@@ -2,6 +2,7 @@ package org.oriso.addonservice.web;
 
 import java.util.Set;
 import org.oriso.addonservice.enablement.EnablementService;
+import org.oriso.addonservice.host.ContextService;
 import org.oriso.addonservice.registry.AddonRegistry;
 import org.oriso.addonservice.registry.RegisteredAddon;
 import org.oriso.addonservice.security.AgencyMembership;
@@ -19,20 +20,26 @@ public class AddonAccess {
   /** Set by the web app when an add-on is used inside an agency context, e.g. a session. */
   public static final String AGENCY_HEADER = "X-Oriso-Agency-Id";
 
-  /** Set by the web app when a counsellor uses an add-on for one session (case view, client profile). */
+  /** Set by the web app when an add-on is used for one session (case view, client profile, chat menu). */
   public static final String SESSION_HEADER = "X-Oriso-Session-Id";
 
   private final AddonRegistry registry;
   private final EnablementService enablement;
   private final AgencyMembership membership;
   private final SessionAccess sessions;
+  private final ContextService contexts;
 
   public AddonAccess(
-      AddonRegistry registry, EnablementService enablement, AgencyMembership membership, SessionAccess sessions) {
+      AddonRegistry registry,
+      EnablementService enablement,
+      AgencyMembership membership,
+      SessionAccess sessions,
+      ContextService contexts) {
     this.registry = registry;
     this.enablement = enablement;
     this.membership = membership;
     this.sessions = sessions;
+    this.contexts = contexts;
   }
 
   public Granted require(String name, Caller caller, String agencyHeader, String sessionHeader) {
@@ -40,11 +47,12 @@ public class AddonAccess {
         registry
             .find(name)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown add-on"));
-    Long agencyId = agencyContext(caller, agencyHeader);
+    SessionContext session = sessionContext(caller, sessionHeader);
+    Long agencyId =
+        session != null && session.agencyId() != null ? session.agencyId() : agencyContext(caller, agencyHeader);
     if (!enablement.isEnabled(name, caller.tenantId(), agencyId)) {
       throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Add-on not enabled");
     }
-    SessionContext session = sessionContext(caller, sessionHeader);
     return new Granted(addon, agencyId, session);
   }
 
@@ -61,19 +69,34 @@ public class AddonAccess {
   }
 
   /**
-   * Verifies the session header for counsellors; null without one. Clients act for themselves, so
-   * their session header carries nothing an add-on needs and is ignored.
+   * Verifies the session header; null without one. A counsellor must be allowed to see the
+   * session (UserService answers with its client); a client must own it, within their Träger.
+   * Other roles carry no session context.
    */
   public SessionContext sessionContext(Caller caller, String sessionHeader) {
-    if (sessionHeader == null || sessionHeader.isBlank() || !caller.hasRole(Role.CONSULTANT)) {
+    if (sessionHeader == null || sessionHeader.isBlank()) {
       return null;
     }
-    long sessionId = parse(sessionHeader, SESSION_HEADER);
-    SessionAccess.SessionInfo session =
-        sessions
-            .find(caller, sessionId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "No access to this session"));
-    return new SessionContext(sessionId, session.askerId(), session.agencyId());
+    if (caller.hasRole(Role.CONSULTANT)) {
+      long sessionId = parse(sessionHeader, SESSION_HEADER);
+      SessionAccess.SessionInfo session =
+          sessions
+              .find(caller, sessionId)
+              .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "No access to this session"));
+      return new SessionContext(sessionId, session.askerId(), session.agencyId());
+    }
+    if (caller.hasRole(Role.ASKER)) {
+      long sessionId = parse(sessionHeader, SESSION_HEADER);
+      if (caller.tenantId() == null) {
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No access to this session");
+      }
+      var own =
+          contexts
+              .ownSession(caller.userId(), caller.tenantId(), sessionId)
+              .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "No access to this session"));
+      return new SessionContext(sessionId, null, own.agencyId());
+    }
+    return null;
   }
 
   /**

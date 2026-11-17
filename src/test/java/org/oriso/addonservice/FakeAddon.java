@@ -28,12 +28,30 @@ final class FakeAddon implements AutoCloseable {
           { "id": "missing", "label": { "de": "Fehlt" }, "type": "count" }
         ],
         "apps": [
-          { "id": "client-page", "title": { "de": "Demo" }, "slots": ["asker.navigation"],
+          { "id": "client-page", "title": { "de": "Demo" }, "slots": ["asker.navigation", "asker.session-menu"],
+            "icon": "/ui/icons/page.svg",
             "screenshots": [
               { "slot": "asker.navigation", "url": "https://raw.githubusercontent.com/a/b/page.png",
                 "caption": { "de": "Seite", "en": "Page" } }
             ] },
-          { "id": "case-panel", "title": { "de": "Demo" }, "slots": ["consultant.session", "consultant.asker-profile"] }
+          { "id": "case-panel", "title": { "de": "Demo" }, "slots": ["consultant.session", "consultant.asker-profile", "consultant.session-menu"] }
+        ]
+      }
+      """;
+
+  /** An add-on that takes over the agency selection of the registration. */
+  static final String AGENCY_FINDER_MANIFEST =
+      """
+      {
+        "name": "%s",
+        "version": "0.2.0",
+        "contract": "oriso-addon/v1",
+        "react": "^19",
+        "ui": "/ui/entry.js",
+        "events": ["user.registered", "session.interaction"],
+        "apps": [
+          { "id": "finder", "title": { "de": "Beratungsstelle finden" }, "slots": ["registration.agency-finder"],
+            "icon": "/ui/icons/finder.svg" }
         ]
       }
       """;
@@ -66,14 +84,19 @@ final class FakeAddon implements AutoCloseable {
   }
 
   FakeAddon(String name) throws IOException {
+    this(name, MANIFEST);
+  }
+
+  FakeAddon(String name, String manifestTemplate) throws IOException {
     server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-    String manifest = MANIFEST.formatted(name);
+    String manifest = manifestTemplate.formatted(name);
     server.createContext("/.well-known/oriso-addon.json", ex -> reply(ex, 200, "application/json", manifest));
     server.createContext("/calendar", this::calendar);
     server.createContext("/schema/settings.json", ex -> reply(ex, 200, "application/json", SCHEMA));
     server.createContext("/stats", this::stats);
     server.createContext("/ui/", ex -> reply(ex, 200, "text/javascript", "export const mount = () => {};"));
     server.createContext("/api/", this::echo);
+    server.createContext("/public/api/", this::echo);
     server.createContext("/events", this::event);
     server.start();
   }

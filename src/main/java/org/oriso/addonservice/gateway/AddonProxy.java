@@ -72,6 +72,23 @@ public class AddonProxy {
       HttpServletResponse response,
       Map<String, String> extraHeaders)
       throws IOException {
+    forward(addon, targetPrefix, remainder, request, response, extraHeaders, -1, Map.of());
+  }
+
+  /**
+   * Like the other {@code forward}, with a request body of at most {@code maxBodyBytes} (413
+   * above, negative for no limit) and response headers that replace the add-on's.
+   */
+  public void forward(
+      RegisteredAddon addon,
+      String targetPrefix,
+      String remainder,
+      HttpServletRequest request,
+      HttpServletResponse response,
+      Map<String, String> extraHeaders,
+      long maxBodyBytes,
+      Map<String, String> responseHeaders)
+      throws IOException {
     URI target = target(addon.baseUrl(), targetPrefix, remainder, request.getQueryString());
     String method = request.getMethod().toUpperCase(Locale.ROOT);
 
@@ -83,7 +100,7 @@ public class AddonProxy {
       }
     }
     extraHeaders.forEach(builder::header);
-    builder.method(method, bodyOf(method, request));
+    builder.method(method, bodyOf(method, request, maxBodyBytes));
 
     HttpResponse<InputStream> upstream;
     try {
@@ -106,6 +123,7 @@ public class AddonProxy {
                 values.forEach(value -> response.addHeader(name, value));
               }
             });
+    responseHeaders.forEach(response::setHeader);
     try (InputStream body = upstream.body(); OutputStream out = response.getOutputStream()) {
       body.transferTo(out);
     }
@@ -121,12 +139,22 @@ public class AddonProxy {
     return URI.create(base + path + (query == null || query.isEmpty() ? "" : "?" + query));
   }
 
-  private static HttpRequest.BodyPublisher bodyOf(String method, HttpServletRequest request)
+  private static HttpRequest.BodyPublisher bodyOf(String method, HttpServletRequest request, long maxBodyBytes)
       throws IOException {
     if (!METHODS_WITH_BODY.contains(method)) {
       return HttpRequest.BodyPublishers.noBody();
     }
     InputStream in = request.getInputStream();
-    return HttpRequest.BodyPublishers.ofInputStream(() -> in);
+    if (maxBodyBytes < 0) {
+      return HttpRequest.BodyPublishers.ofInputStream(() -> in);
+    }
+    if (request.getContentLengthLong() > maxBodyBytes) {
+      throw new ResponseStatusException(HttpStatus.CONTENT_TOO_LARGE, "Request body too large");
+    }
+    byte[] body = in.readNBytes((int) Math.min(maxBodyBytes + 1, Integer.MAX_VALUE - 8));
+    if (body.length > maxBodyBytes) {
+      throw new ResponseStatusException(HttpStatus.CONTENT_TOO_LARGE, "Request body too large");
+    }
+    return HttpRequest.BodyPublishers.ofByteArray(body);
   }
 }

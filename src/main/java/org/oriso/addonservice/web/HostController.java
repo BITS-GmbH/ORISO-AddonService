@@ -62,7 +62,7 @@ public class HostController {
   @GetMapping("/addons/host/context")
   public Map<String, Object> context(
       @AuthenticationPrincipal Jwt jwt, @RequestParam(required = false) String subject) {
-    HostToken token = HostToken.from(jwt);
+    HostToken token = HostToken.from(jwt).requireUser();
     addonOf(token);
     return context.context(token, subject);
   }
@@ -76,7 +76,7 @@ public class HostController {
   @PostMapping("/addons/host/notifications")
   public ResponseEntity<Object> notify(
       @AuthenticationPrincipal Jwt jwt, @RequestBody NotificationService.NotificationRequest request) {
-    HostToken token = HostToken.from(jwt);
+    HostToken token = HostToken.from(jwt).requireUser();
     Object result = notifications.send(addonOf(token), token, request);
     return ResponseEntity.accepted()
         .body(result instanceof List<?> ids ? Map.of("ids", ids) : new Created(result));
@@ -85,7 +85,7 @@ public class HostController {
   @PostMapping("/addons/host/audit")
   public ResponseEntity<Created> audit(
       @AuthenticationPrincipal Jwt jwt, @RequestBody AuditService.AuditRequest request) {
-    HostToken token = HostToken.from(jwt);
+    HostToken token = HostToken.from(jwt).requireUser();
     long id = audit.record(addonOf(token), token, request);
     return ResponseEntity.status(HttpStatus.CREATED).body(new Created(id));
   }

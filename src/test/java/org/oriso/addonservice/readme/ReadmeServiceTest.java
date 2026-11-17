@@ -59,7 +59,8 @@ class ReadmeServiceTest {
     var properties =
         new AddonProperties(
             "/service/addons", null, null, null, null, null, null, null, null, null,
-            new AddonProperties.Readme(List.of("127.0.0.1"), Duration.ofSeconds(2), DataSize.ofKilobytes(1), Duration.ofMinutes(10)));
+            new AddonProperties.Readme(List.of("127.0.0.1"), Duration.ofSeconds(2), DataSize.ofKilobytes(1), Duration.ofMinutes(10)),
+            null);
     readmes = new ReadmeService(properties, clock);
   }
 

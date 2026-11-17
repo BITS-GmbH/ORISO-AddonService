@@ -39,15 +39,37 @@ public record AddonManifest(
     return events == null ? List.of() : events;
   }
 
+  /** The same manifest with app icons as paths below {@code publicPath}, as the browser loads them. */
+  public AddonManifest withPublicIcons(String publicPath) {
+    String base = publicPath + "/" + name;
+    var withIcons = apps().stream().map(app -> app.icon() == null ? app : app.withIcon(base + app.icon())).toList();
+    return new AddonManifest(
+        name, version, contract, react, withIcons, ui, settings, stats, export, events, health, calendar, readme);
+  }
+
   @JsonIgnoreProperties(ignoreUnknown = true)
   public record App(
-      String id, Map<String, String> title, List<String> slots, String visibility, List<Screenshot> screenshots) {
+      String id,
+      Map<String, String> title,
+      List<String> slots,
+      String visibility,
+      List<Screenshot> screenshots,
+      String icon) {
 
     public static final String STATIC = "static";
     public static final String DYNAMIC = "dynamic";
 
     public App(String id, Map<String, String> title, List<String> slots, String visibility) {
-      this(id, title, slots, visibility, null);
+      this(id, title, slots, visibility, null, null);
+    }
+
+    public App(
+        String id, Map<String, String> title, List<String> slots, String visibility, List<Screenshot> screenshots) {
+      this(id, title, slots, visibility, screenshots, null);
+    }
+
+    public App withIcon(String newIcon) {
+      return new App(id, title, slots, visibility, screenshots, newIcon);
     }
 
     public List<String> slots() {

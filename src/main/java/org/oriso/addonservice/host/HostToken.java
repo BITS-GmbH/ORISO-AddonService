@@ -1,6 +1,7 @@
 package org.oriso.addonservice.host;
 
 import java.util.List;
+import org.oriso.addonservice.security.Role;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.server.ResponseStatusException;
@@ -31,6 +32,18 @@ public record HostToken(
         number(jwt.getClaim("agencyId")),
         number(jwt.getClaim("sessionId")),
         jwt.getClaimAsString("askerId"));
+  }
+
+  public boolean isAnonymous() {
+    return roles.contains(Role.ANONYMOUS);
+  }
+
+  /** Visitors in the registration have no account: nothing personal can be read or written for them. */
+  public HostToken requireUser() {
+    if (isAnonymous() || userId == null) {
+      throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not available with an anonymous token");
+    }
+    return this;
   }
 
   public long requireTenant() {
