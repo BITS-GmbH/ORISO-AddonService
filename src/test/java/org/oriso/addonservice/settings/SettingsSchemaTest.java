@@ -41,4 +41,12 @@ class SettingsSchemaTest {
             "other: unknown setting");
     assertThat(schema.problems(Map.of("limit", 9))).contains("intro: required", "limit: at most 3");
   }
+
+  @Test
+  void checksRequiredFieldsAgainstTheMergedValues() {
+    assertThat(schema.problems(Map.of("mode", "a"), Map.of("intro", "Hallo", "mode", "a"))).isEmpty();
+    assertThat(schema.problems(Map.of("mode", "a"), Map.of("mode", "a"))).contains("intro: required");
+    assertThat(schema.problems(Map.of("mode", "c"), Map.of("intro", "Hallo", "mode", "c")))
+        .contains("mode: not one of the allowed values");
+  }
 }

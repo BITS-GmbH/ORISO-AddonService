@@ -60,7 +60,12 @@ public class SettingsService {
   @Transactional
   public Map<String, Object> save(
       RegisteredAddon addon, long tenantId, Long agencyId, Map<String, Object> values, String by) {
-    List<String> problems = schema(addon).problems(values);
+    var effective = new LinkedHashMap<>(schema(addon).defaults());
+    if (agencyId != null) {
+      effective.putAll(stored(addon.name(), tenantId, null));
+    }
+    effective.putAll(values);
+    List<String> problems = schema(addon).problems(values, effective);
     if (!problems.isEmpty()) {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, String.join("; ", problems));
     }

@@ -51,6 +51,15 @@ public final class SettingsSchema {
 
   /** Problems with the given values; values for unknown properties are reported too. */
   public List<String> problems(Map<String, Object> values) {
+    return problems(values, values);
+  }
+
+  /**
+   * Problems with {@code values} saved on one level; required fields are checked against {@code
+   * effective}, the values after merging defaults and the levels above, so an agency may inherit
+   * them.
+   */
+  public List<String> problems(Map<String, Object> values, Map<String, Object> effective) {
     var problems = new ArrayList<String>();
     var properties = properties();
     for (String name : values.keySet()) {
@@ -60,7 +69,7 @@ public final class SettingsSchema {
     }
     if (schema.get("required") instanceof Collection<?> required) {
       for (Object name : required) {
-        Object value = values.get(String.valueOf(name));
+        Object value = effective.get(String.valueOf(name));
         if (value == null || (value instanceof String text && text.isBlank())) {
           problems.add(name + ": required");
         }
