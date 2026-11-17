@@ -1,0 +1,13 @@
+{
+	"name": "@oriso/vite-plugin-addon",
+	"version": "1.0.0",
+	"description": "Maps React and the ORISO component kit onto the host's shared modules (ADR-034).",
+	"license": "AGPL-3.0",
+	"type": "module",
+	"main": "index.mjs",
+	"peerDependencies": {
+		"react": ">=19",
+		"react-dom": ">=19",
+		"vite": ">=5"
+	}
+}
