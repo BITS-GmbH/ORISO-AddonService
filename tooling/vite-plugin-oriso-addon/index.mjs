@@ -7,7 +7,7 @@ import { pathToFileURL } from 'node:url';
 const GLOBAL = 'globalThis.__ORISO_ADDON_SHARED__';
 const PREFIX = '\0oriso-shared:';
 
-const KIT_EXPORTS = ['version', 'Provider', 'Button', 'TextField', 'Textarea', 'Checkbox', 'Select', 'Notice', 'Card', 'Headline', 'Spinner'];
+const KIT_EXPORTS = ['version', 'Provider', 'Button', 'TextField', 'Textarea', 'Checkbox', 'Select', 'RadioGroup', 'DatePicker', 'NumberField', 'Notice', 'Card', 'Headline', 'Spinner'];
 
 const reexport = (source, names) =>
 	[`const shared = ${source};`, 'export default shared;', ...names.map((name) => `export const ${name} = /* @__PURE__ */ (() => shared.${name})();`)].join('\n');

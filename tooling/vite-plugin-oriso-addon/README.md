@@ -49,5 +49,5 @@ export async function unmount({ domElement }) {
 as types. The types for the kit come from `@oriso/web-kit`, which ORISO-Frontend builds
 with `npm run build:addon-kit-types`.
 
-The kit exists in the web app (slots `asker.*` and `consultant.*`). ORISO-Admin has no
+The kit exists in the web app (slots `asker.*`, `consultant.*` and `registration.agency-finder`). ORISO-Admin has no
 kit yet; an `admin.page` app falls back to its own components.
